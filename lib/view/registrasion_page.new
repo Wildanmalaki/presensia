@@ -25,11 +25,10 @@ class _RegistrasionPageState extends State<RegistrasionPage> {
   bool _isLoadingOptions = true;
   String? _optionsError;
 
-  static const List<MapEntry<String, String>> _jenisKelaminOptions =
-      <MapEntry<String, String>>[
-        MapEntry<String, String>('L', 'Laki-laki'),
-        MapEntry<String, String>('P', 'Perempuan'),
-      ];
+  static const List<String> _jenisKelaminOptions = <String>[
+    'Laki-laki',
+    'Perempuan',
+  ];
 
   @override
   void initState() {
@@ -214,11 +213,6 @@ class _RegistrasionPageState extends State<RegistrasionPage> {
                                 onRetry: _loadRegistrationOptions,
                               ),
                               const SizedBox(height: 24),
-                            ] else ...[
-                              _AvailableOptionsSummary(
-                                batchOptions: _batchOptions,
-                              ),
-                              const SizedBox(height: 24),
                             ],
                             _RegistrationField(
                               controller: _nameController,
@@ -246,8 +240,7 @@ class _RegistrasionPageState extends State<RegistrasionPage> {
                                   .toList(),
                               hintText: 'Pilih batch',
                               icon: Icons.local_offer_rounded,
-                              enabled:
-                                  !_isLoadingOptions &&
+                              enabled: !_isLoadingOptions &&
                                   _optionsError == null &&
                                   _batchOptions.isNotEmpty,
                               onChanged: (batch) {
@@ -269,19 +262,17 @@ class _RegistrasionPageState extends State<RegistrasionPage> {
                               value: _selectedTraining,
                               items: trainings
                                   .map(
-                                    (training) =>
-                                        DropdownMenuItem<TrainingOption>(
-                                          value: training,
-                                          child: Text(training.title),
-                                        ),
+                                    (training) => DropdownMenuItem<TrainingOption>(
+                                      value: training,
+                                      child: Text(training.title),
+                                    ),
                                   )
                                   .toList(),
                               hintText: _selectedBatch == null
                                   ? 'Pilih batch terlebih dahulu'
                                   : 'Pilih jurusan',
                               icon: Icons.school_rounded,
-                              enabled:
-                                  _selectedBatch != null &&
+                              enabled: _selectedBatch != null &&
                                   trainings.isNotEmpty &&
                                   !_isLoadingOptions,
                               onChanged: (training) {
@@ -303,8 +294,8 @@ class _RegistrasionPageState extends State<RegistrasionPage> {
                               items: _jenisKelaminOptions
                                   .map(
                                     (item) => DropdownMenuItem<String>(
-                                      value: item.key,
-                                      child: Text(item.value),
+                                      value: item,
+                                      child: Text(item),
                                     ),
                                   )
                                   .toList(),
@@ -351,22 +342,8 @@ class _RegistrasionPageState extends State<RegistrasionPage> {
                                 if (value == null || value.isEmpty) {
                                   return 'Password wajib diisi.';
                                 }
-                                if (value.length < 8) {
-                                  return 'Password minimal 8 karakter.';
-                                }
-                                final hasUppercase = value.contains(
-                                  RegExp(r'[A-Z]'),
-                                );
-                                final hasLowercase = value.contains(
-                                  RegExp(r'[a-z]'),
-                                );
-                                final hasNumberOrSymbol = value.contains(
-                                  RegExp(r'[\d\W_]'),
-                                );
-                                if (!hasUppercase ||
-                                    !hasLowercase ||
-                                    !hasNumberOrSymbol) {
-                                  return 'Password harus ada huruf besar, kecil, dan angka/simbol.';
+                                if (value.length < 6) {
+                                  return 'Password minimal 6 karakter.';
                                 }
                                 return null;
                               },
@@ -410,31 +387,16 @@ class _RegistrasionPageState extends State<RegistrasionPage> {
                                   ),
                                 ),
                                 child: _isLoading
-                                    ? Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: const [
-                                          SizedBox(
-                                            height: 18,
-                                            width: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              valueColor:
-                                                  AlwaysStoppedAnimation<Color>(
-                                                    Color(0xFF526DD8),
-                                                  ),
-                                            ),
-                                          ),
-                                          SizedBox(width: 10),
-                                          Text(
-                                            'Memproses...',
-                                            style: TextStyle(
-                                              color: Color(0xFF526DD8),
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 16,
-                                            ),
-                                          ),
-                                        ],
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Color(0xFF526DD8),
+                                              ),
+                                        ),
                                       )
                                     : Text(
                                         'Daftar Akun',
@@ -591,7 +553,7 @@ class _RegistrationDropdownField<T> extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<T>(
-          initialValue: value,
+          value: value,
           items: items,
           onChanged: enabled ? onChanged : null,
           validator: validator,
@@ -610,7 +572,10 @@ class _RegistrationDropdownField<T> extends StatelessWidget {
 }
 
 class _RegistrationLoadError extends StatelessWidget {
-  const _RegistrationLoadError({required this.message, required this.onRetry});
+  const _RegistrationLoadError({
+    required this.message,
+    required this.onRetry,
+  });
 
   final String message;
   final Future<void> Function() onRetry;
@@ -647,76 +612,6 @@ class _RegistrationLoadError extends StatelessWidget {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: const Text('Coba lagi'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AvailableOptionsSummary extends StatelessWidget {
-  const _AvailableOptionsSummary({required this.batchOptions});
-
-  final List<BatchOption> batchOptions;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F9FF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFD9E6FF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Semua Batch dan Jurusan',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: const Color(0xFF246BDB),
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Pilih batch terlebih dahulu, lalu jurusan yang tersedia pada batch tersebut.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF6D7385),
-              height: 1.4,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...batchOptions.map(
-            (batch) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    batch.label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF222531),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    batch.trainings
-                        .map((training) => training.title)
-                        .join(', '),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF6D7385),
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),

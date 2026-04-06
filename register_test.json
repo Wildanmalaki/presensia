@@ -1,0 +1,9 @@
+{
+  "name": "Wildan Test",
+  "email": "wildan.test.20260406b@example.com",
+  "password": "Password123!",
+  "password_confirmation": "Password123!",
+  "batch_id": 2,
+  "training_id": 14,
+  "jenis_kelamin": "L"
+}
