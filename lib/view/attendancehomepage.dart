@@ -11,33 +11,30 @@ class AttendanceHomepage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FC),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF7F8FC),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        title: Text(
+          '#SmartAttendance',
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: const Color(0xFF246BDB),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 380),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFDCE8FF),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(
-                      '#SmartAttendance',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: const Color(0xFF246BDB),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+          child: Transform.translate(
+            offset: const Offset(0, -90),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 380),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
                   Text(
                     'Selamat Datang di',
                     textAlign: TextAlign.center,
@@ -206,7 +203,8 @@ class AttendanceHomepage extends StatelessWidget {
                       ),
                     ],
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
