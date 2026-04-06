@@ -1,7 +1,94 @@
 import 'package:flutter/material.dart';
+import 'package:presensia/services/auth_service.dart';
+import 'package:presensia/view/login_page.dart';
 
-class RegistrasionPage extends StatelessWidget {
+class RegistrasionPage extends StatefulWidget {
   const RegistrasionPage({super.key});
+
+  @override
+  State<RegistrasionPage> createState() => _RegistrasionPageState();
+}
+
+class _RegistrasionPageState extends State<RegistrasionPage> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _batchController = TextEditingController();
+  final TextEditingController _jurusanController = TextEditingController();
+  final TextEditingController _jenisKelaminController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _batchController.dispose();
+    _jurusanController.dispose();
+    _jenisKelaminController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _register() async {
+    final name = _nameController.text.trim();
+    final batch = _batchController.text.trim();
+    final jurusan = _jurusanController.text.trim();
+    final jenisKelamin = _jenisKelaminController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      _showMessage('Nama, email, dan password wajib diisi.');
+      return;
+    }
+
+    if (password != confirmPassword) {
+      _showMessage('Password dan konfirmasi harus sama.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final result = await AuthService.register(
+      name: name,
+      email: email,
+      password: password,
+      batch: batch.isEmpty ? null : batch,
+      jurusan: jurusan.isEmpty ? null : jurusan,
+      jenisKelamin: jenisKelamin.isEmpty ? null : jenisKelamin,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (result.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message ?? 'Registrasi berhasil.')),
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute<void>(builder: (context) => const LoginPage()),
+      );
+      return;
+    }
+
+    _showMessage(result.message ?? 'Registrasi gagal.');
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,37 +170,63 @@ class RegistrasionPage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 24),
-                          const _RegistrationField(
+                          _RegistrationField(
+                            controller: _nameController,
                             label: 'NAMA',
                             hintText: 'Nama Lengkap',
                             icon: Icons.person_rounded,
                           ),
                           const SizedBox(height: 16),
-                          const _RegistrationField(
+                          _RegistrationField(
+                            controller: _batchController,
+                            label: 'BATCH',
+                            hintText: 'Masukkan batch Anda',
+                            icon: Icons.local_offer_rounded,
+                          ),
+                          const SizedBox(height: 16),
+                          _RegistrationField(
+                            controller: _jurusanController,
+                            label: 'JURUSAN',
+                            hintText: 'Masukkan jurusan Anda',
+                            icon: Icons.local_offer_rounded,
+                          ),
+                          const SizedBox(height: 16),
+                          _RegistrationField(
+                            controller: _jenisKelaminController,
+                            label: 'JENIS KELAMIN',
+                            hintText: 'Masukkan jenis kelamin Anda',
+                            icon: Icons.local_offer_rounded,
+                          ),
+                          _RegistrationField(
+                            controller: _emailController,
                             label: 'EMAIL',
                             hintText: 'email@gmail.com',
                             icon: Icons.email_rounded,
                             keyboardType: TextInputType.emailAddress,
                           ),
                           const SizedBox(height: 16),
-                          const _RegistrationField(
+                          _RegistrationField(
+                            controller: _passwordController,
                             label: 'PASSWORD',
                             hintText: '••••••••',
                             icon: Icons.lock_rounded,
                             obscureText: true,
                           ),
                           const SizedBox(height: 16),
-                          const _RegistrationField(
+                          _RegistrationField(
+                            controller: _confirmPasswordController,
                             label: 'CONFIRM PASSWORD',
                             hintText: '••••••••',
                             icon: Icons.verified_user_rounded,
                             obscureText: true,
                           ),
-                          const SizedBox(height: 26),
+                          const SizedBox(height: 16),
+
+                          SizedBox(height: 16),
                           SizedBox(
                             width: double.infinity,
                             child: OutlinedButton(
-                              onPressed: () {},
+                              onPressed: _isLoading ? null : _register,
                               style: OutlinedButton.styleFrom(
                                 backgroundColor: Colors.white,
                                 foregroundColor: const Color(0xFF222531),
@@ -128,99 +241,81 @@ class RegistrasionPage extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const _GoogleLogoBadge(),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    'Continue with Google',
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                          color: const Color(0xFF222531),
-                                          fontWeight: FontWeight.w600,
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Color.fromARGB(255, 82, 109, 216),
+                                            ),
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        // const _GoogleLogoBadge(),
+                                        const SizedBox(width: 12),
+                                        Text(
+                                          'Daftar Akun',
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(
+                                                color: const Color.fromARGB(
+                                                  255,
+                                                  82,
+                                                  109,
+                                                  216,
+                                                ),
+                                                fontWeight: FontWeight.w600,
+                                              ),
                                         ),
-                                  ),
-                                ],
-                              ),
+                                      ],
+                                    ),
                             ),
                           ),
                           const SizedBox(height: 18),
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Divider(
-                                  color: Color(0xFFE5EAF4),
-                                  thickness: 1,
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                ),
-                                child: Text(
-                                  'OR',
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: const Color(0xFF7B8194),
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                              ),
-                              const Expanded(
-                                child: Divider(
-                                  color: Color(0xFFE5EAF4),
-                                  thickness: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: () {},
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF4753E8),
-                                foregroundColor: Colors.white,
-                                elevation: 7,
-                                shadowColor: const Color(0x334753E8),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 18,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              child: Text(
-                                'Continue with Email',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 18),
+
+                          //
+                          // const SizedBox(height: 18),
                           Center(
-                            child: RichText(
-                              textAlign: TextAlign.center,
-                              text: TextSpan(
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: const Color(0xFF6D7385),
-                                  fontWeight: FontWeight.w500,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Sudah punya akun? ',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: const Color(0xFF6D7385),
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
-                                children: const [
-                                  TextSpan(text: 'Sudah punya akun? '),
-                                  TextSpan(
-                                    text: 'Masuk',
-                                    style: TextStyle(
-                                      color: Color(0xFF246BDB),
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute<void>(
+                                        builder: (context) => const LoginPage(),
+                                      ),
+                                    );
+                                  },
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFF246BDB),
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: const Size(0, 0),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  child: Text(
+                                    'Masuk',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: const Color(0xFF246BDB),
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -237,44 +332,9 @@ class RegistrasionPage extends StatelessWidget {
   }
 }
 
-class _GoogleLogoBadge extends StatelessWidget {
-  const _GoogleLogoBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 26,
-      height: 26,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(13),
-      ),
-      alignment: Alignment.center,
-      child: RichText(
-        text: const TextSpan(
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            height: 1,
-          ),
-          children: [
-            TextSpan(
-              text: 'G',
-              style: TextStyle(color: Color(0xFF4285F4)),
-            ),
-            TextSpan(
-              text: '·',
-              style: TextStyle(color: Color(0xFFEA4335)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _RegistrationField extends StatelessWidget {
   const _RegistrationField({
+    this.controller,
     required this.label,
     required this.hintText,
     required this.icon,
@@ -282,6 +342,7 @@ class _RegistrationField extends StatelessWidget {
     this.obscureText = false,
   });
 
+  final TextEditingController? controller;
   final String label;
   final String hintText;
   final IconData icon;
@@ -305,6 +366,7 @@ class _RegistrationField extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         TextField(
+          controller: controller,
           keyboardType: keyboardType,
           obscureText: obscureText,
           decoration: InputDecoration(

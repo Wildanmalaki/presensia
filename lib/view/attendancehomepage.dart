@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:presensia/view/login_page.dart';
 import 'package:presensia/view/registrasion_page.dart';
 
 class AttendanceHomepage extends StatelessWidget {
@@ -170,24 +171,40 @@ class AttendanceHomepage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  RichText(
-                    textAlign: TextAlign.center,
-                    text: TextSpan(
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: const Color(0xFF6B7280),
-                        fontWeight: FontWeight.w500,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Sudah punya akun? ',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: const Color(0xFF6B7280),
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                      children: const [
-                        TextSpan(text: 'Sudah punya akun? '),
-                        TextSpan(
-                          text: 'Masuk',
-                          style: TextStyle(
-                            color: Color(0xFF246BDB),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (context) => const LoginPage(),
+                            ),
+                          );
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF246BDB),
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          'Masuk',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: const Color(0xFF246BDB),
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ],
               ),
