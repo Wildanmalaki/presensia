@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:presensia/services/auth_service.dart';
 import 'package:presensia/view/attendancehomepage.dart';
 import 'package:presensia/view/widgets/navbar.dart';
 import 'package:presensia/view/widgets/app_drawer.dart';
 import 'package:presensia/view/widgets/attendance_tab.dart';
+import 'package:presensia/view/widgets/formizin.dart';
+import 'package:presensia/view/widgets/history_tab.dart';
 import 'package:presensia/view/widgets/profile_tab.dart';
 
 class HomePage extends StatefulWidget {
@@ -16,10 +19,15 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  static const double _ppkdLatitude = -6.2108808;
+  static const double _ppkdLongitude = 106.8129424;
+  static const double _attendanceRadiusMeters = 400;
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _selectedIndex = 0;
   late DateTime _now;
   Timer? _clockTimer;
+  StreamSubscription<Position>? _locationSubscription;
   String _userName = 'Pengguna';
   Map<String, dynamic>? _profileData;
   Map<String, dynamic>? _statsData;
@@ -27,6 +35,8 @@ class _HomePageState extends State<HomePage> {
   bool _isLoadingData = true;
   bool _isAttendanceLoading = false;
   bool _isLeaveLoading = false;
+  bool _isWithinAttendanceZone = false;
+  double? _distanceToPpkdMeters;
 
   @override
   void initState() {
@@ -34,6 +44,7 @@ class _HomePageState extends State<HomePage> {
     _now = DateTime.now();
     _loadUserName();
     _refreshData();
+    _initializeAttendanceLocation();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
@@ -45,6 +56,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _clockTimer?.cancel();
+    _locationSubscription?.cancel();
     super.dispose();
   }
 
@@ -71,22 +83,26 @@ class _HomePageState extends State<HomePage> {
     Map<String, dynamic>? latestToday = _todayData;
     final errors = <String>[];
 
-    try {
-      latestProfile = await AuthService.fetchProfile();
-    } catch (error) {
-      errors.add(error.toString().replaceFirst('Exception: ', ''));
+    final results = await Future.wait<_RefreshResult>([
+      _loadRefreshSection(AuthService.fetchProfile),
+      _loadRefreshSection(AuthService.fetchAttendanceStats),
+      _loadRefreshSection(AuthService.fetchAttendanceToday),
+    ]);
+
+    if (results[0].data != null) {
+      latestProfile = results[0].data;
+    }
+    if (results[1].data != null) {
+      latestStats = results[1].data;
+    }
+    if (results[2].data != null) {
+      latestToday = results[2].data;
     }
 
-    try {
-      latestStats = await AuthService.fetchAttendanceStats();
-    } catch (error) {
-      errors.add(error.toString().replaceFirst('Exception: ', ''));
-    }
-
-    try {
-      latestToday = await AuthService.fetchAttendanceToday();
-    } catch (error) {
-      errors.add(error.toString().replaceFirst('Exception: ', ''));
+    for (final result in results) {
+      if (result.errorMessage != null) {
+        errors.add(result.errorMessage!);
+      }
     }
 
     if (!mounted) return;
@@ -129,17 +145,94 @@ class _HomePageState extends State<HomePage> {
     return null;
   }
 
+  Future<void> _initializeAttendanceLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      var permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (!serviceEnabled ||
+          permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        setState(() {
+          _isWithinAttendanceZone = false;
+          _distanceToPpkdMeters = null;
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+      if (mounted) {
+        _updateAttendanceZone(position.latitude, position.longitude);
+      }
+
+      _locationSubscription?.cancel();
+      _locationSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+        ),
+      ).listen((position) {
+        if (!mounted) return;
+        _updateAttendanceZone(position.latitude, position.longitude);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isWithinAttendanceZone = false;
+        _distanceToPpkdMeters = null;
+      });
+    }
+  }
+
+  String? _extractProfileEmail(Map<String, dynamic>? profileResponse) {
+    final data = profileResponse?['data'];
+    if (data is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final directEmail = data['email']?.toString().trim();
+    if (directEmail != null && directEmail.isNotEmpty) {
+      return directEmail;
+    }
+
+    final user = data['user'];
+    if (user is Map<String, dynamic>) {
+      final nestedEmail = user['email']?.toString().trim();
+      if (nestedEmail != null && nestedEmail.isNotEmpty) {
+        return nestedEmail;
+      }
+    }
+
+    return null;
+  }
+
   Future<void> _handleCheckIn() async {
     if (_isAttendanceLoading) return;
+    if (!_isWithinAttendanceZone) {
+      _showMessage(
+        context,
+        'Anda di luar radius 400 meter dari PPKD. Absen tidak tersedia.',
+      );
+      return;
+    }
 
     setState(() {
       _isAttendanceLoading = true;
     });
 
+    final location = await _resolveAttendanceLocation();
     final result = await AuthService.checkIn(
-      lat: -6.200000,
-      lng: 106.816666,
-      address: 'Jakarta',
+      lat: location.lat,
+      lng: location.lng,
+      address: location.address,
     );
 
     if (!mounted) return;
@@ -155,15 +248,23 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _handleCheckOut() async {
     if (_isAttendanceLoading) return;
+    if (!_isWithinAttendanceZone) {
+      _showMessage(
+        context,
+        'Anda di luar radius 400 meter dari PPKD. Absen tidak tersedia.',
+      );
+      return;
+    }
 
     setState(() {
       _isAttendanceLoading = true;
     });
 
+    final location = await _resolveAttendanceLocation();
     final result = await AuthService.checkOut(
-      lat: -6.200000,
-      lng: 106.816666,
-      address: 'Jakarta',
+      lat: location.lat,
+      lng: location.lng,
+      address: location.address,
     );
 
     if (!mounted) return;
@@ -180,23 +281,24 @@ class _HomePageState extends State<HomePage> {
   Future<void> _handleLeave() async {
     if (_isLeaveLoading) return;
 
+    final submitted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => const FormIzinPage()),
+    );
+    if (!mounted || submitted != true) {
+      return;
+    }
+
     setState(() {
       _isLeaveLoading = true;
     });
-
-    final result = await AuthService.requestLeave(
-      reason: 'Alasan tidak bisa hadir karena sakit',
-    );
 
     if (!mounted) return;
     setState(() {
       _isLeaveLoading = false;
     });
 
-    _showMessage(context, result.message ?? 'Permintaan izin telah dikirim.');
-    if (result.success) {
-      await _refreshData();
-    }
+    await _refreshData();
+    _showMessage(context, 'Permintaan izin telah dikirim.');
   }
 
   void _showMessage(BuildContext context, String message) {
@@ -212,9 +314,15 @@ class _HomePageState extends State<HomePage> {
         true);
 
     if (status == null || status.isEmpty) {
+      if (!_isWithinAttendanceZone) {
+        return 'Di Luar Radius PPKD';
+      }
       return 'Absen Masuk';
     }
     if (status == 'masuk' && !hasCheckOut) {
+      if (!_isWithinAttendanceZone) {
+        return 'Di Luar Radius PPKD';
+      }
       return 'Absen Keluar';
     }
     if (status == 'izin') {
@@ -230,9 +338,15 @@ class _HomePageState extends State<HomePage> {
         true);
 
     if (status == null || status.isEmpty) {
+      if (!_isWithinAttendanceZone) {
+        return 'Absen hanya bisa dilakukan dalam radius 400 meter dari PPKD.';
+      }
       return 'Tap untuk melakukan absen masuk.';
     }
     if (status == 'masuk' && !hasCheckOut) {
+      if (!_isWithinAttendanceZone) {
+        return 'Absen hanya bisa dilakukan dalam radius 400 meter dari PPKD.';
+      }
       return 'Tap untuk melakukan absen keluar.';
     }
     if (status == 'izin') {
@@ -248,17 +362,18 @@ class _HomePageState extends State<HomePage> {
         true);
 
     if (status == null || status.isEmpty) {
+      if (!_isWithinAttendanceZone) {
+        return null;
+      }
       return _handleCheckIn;
     }
     if (status == 'masuk' && !hasCheckOut) {
+      if (!_isWithinAttendanceZone) {
+        return null;
+      }
       return _handleCheckOut;
     }
     return null;
-  }
-
-  bool get _canRequestLeave {
-    final status = _todayData?['data']?['status']?.toString().toLowerCase();
-    return status == null || status.isEmpty;
   }
 
   @override
@@ -267,6 +382,14 @@ class _HomePageState extends State<HomePage> {
       key: _scaffoldKey,
       drawer: AppDrawer(
         name: _userName,
+        email: _extractProfileEmail(_profileData) ?? 'email belum tersedia',
+        currentIndex: _selectedIndex,
+        onSelectTab: (index) {
+          if (!mounted) return;
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
         onLogout: () async {
           await AuthService.clearToken();
           if (!mounted) return;
@@ -308,6 +431,14 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (_selectedIndex == 2) {
+      return HistoryTab(
+        statsData: _statsData,
+        todayData: _todayData,
+        onRefresh: _refreshData,
+      );
+    }
+
+    if (_selectedIndex == 3) {
       return ProfileTab(
         profileData: _profileData,
         currentUserName: _userName,
@@ -353,11 +484,14 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 12),
           _LeaveActionCard(
-            onTap: _canRequestLeave ? _handleLeave : null,
+            onTap: _handleLeave,
             isLoading: _isLeaveLoading,
           ),
           const SizedBox(height: 18),
-          const _LocationCard(),
+          _LocationCard(
+            isWithinZone: _isWithinAttendanceZone,
+            distanceMeters: _distanceToPpkdMeters,
+          ),
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -372,7 +506,7 @@ class _HomePageState extends State<HomePage> {
               TextButton(
                 onPressed: () {
                   setState(() {
-                    _selectedIndex = 1;
+                    _selectedIndex = 2;
                   });
                 },
                 style: TextButton.styleFrom(
@@ -412,6 +546,91 @@ class _HomePageState extends State<HomePage> {
     }
     return 'Selamat Malam,';
   }
+
+  Future<_AttendanceLocation> _resolveAttendanceLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      var permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (!serviceEnabled ||
+          permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return const _AttendanceLocation(
+          lat: -6.200000,
+          lng: 106.816666,
+          address: 'Jakarta',
+        );
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      return _AttendanceLocation(
+        lat: position.latitude,
+        lng: position.longitude,
+        address:
+            '${position.latitude.toStringAsFixed(6)},${position.longitude.toStringAsFixed(6)}',
+      );
+    } catch (_) {
+      return const _AttendanceLocation(
+        lat: -6.200000,
+        lng: 106.816666,
+        address: 'Jakarta',
+      );
+    }
+  }
+
+  void _updateAttendanceZone(double latitude, double longitude) {
+    final distance = Geolocator.distanceBetween(
+      latitude,
+      longitude,
+      _ppkdLatitude,
+      _ppkdLongitude,
+    );
+
+    setState(() {
+      _distanceToPpkdMeters = distance;
+      _isWithinAttendanceZone = distance <= _attendanceRadiusMeters;
+    });
+  }
+
+  Future<_RefreshResult> _loadRefreshSection(
+    Future<Map<String, dynamic>> Function() loader,
+  ) async {
+    try {
+      final data = await loader();
+      return _RefreshResult(data: data);
+    } catch (error) {
+      return _RefreshResult(
+        errorMessage: error.toString().replaceFirst('Exception: ', ''),
+      );
+    }
+  }
+}
+
+class _RefreshResult {
+  const _RefreshResult({this.data, this.errorMessage});
+
+  final Map<String, dynamic>? data;
+  final String? errorMessage;
+}
+
+class _AttendanceLocation {
+  const _AttendanceLocation({
+    required this.lat,
+    required this.lng,
+    required this.address,
+  });
+
+  final double lat;
+  final double lng;
+  final String address;
 }
 
 class _TopBar extends StatelessWidget {
@@ -619,7 +838,10 @@ class _CurrentTimeCard extends StatelessWidget {
 }
 
 class _LocationCard extends StatelessWidget {
-  const _LocationCard();
+  const _LocationCard({required this.isWithinZone, this.distanceMeters});
+
+  final bool isWithinZone;
+  final double? distanceMeters;
 
   @override
   Widget build(BuildContext context) {
@@ -668,25 +890,41 @@ class _LocationCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Anda berada di dalam jangkauan',
+                  isWithinZone
+                      ? 'Anda berada dalam radius absensi PPKD.'
+                      : 'Anda di luar radius 400 meter dari PPKD.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF8A92A6),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (distanceMeters != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Jarak ke PPKD: ${distanceMeters!.round()} meter',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF8A92A6),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: const Color(0xFFE8F8EE),
+              color: isWithinZone
+                  ? const Color(0xFFE8F8EE)
+                  : const Color(0xFFFFEFEF),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
-              'SCOPE',
+              isWithinZone ? 'BISA ABSEN' : 'DI LUAR AREA',
               style: theme.textTheme.labelSmall?.copyWith(
-                color: const Color(0xFF35A867),
+                color: isWithinZone
+                    ? const Color(0xFF35A867)
+                    : const Color(0xFFE8515B),
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.8,
               ),

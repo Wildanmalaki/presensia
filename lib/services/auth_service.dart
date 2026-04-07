@@ -476,6 +476,31 @@ class AuthService {
     }
   }
 
+  static Future<Map<String, dynamic>> fetchAttendanceHistory({
+    required String start,
+    required String end,
+  }) async {
+    try {
+      final uri = Uri.parse(
+        '$baseUrl/api/absen/history',
+      ).replace(queryParameters: {'start': start, 'end': end});
+      final response = await http
+          .get(uri, headers: await _headersWithAuth())
+          .timeout(_requestTimeout);
+      final body = _tryDecode(response.body);
+      if (response.statusCode == 200) {
+        return body ?? <String, dynamic>{};
+      }
+      throw Exception(
+        _parseMessage(body) ?? 'Terjadi kesalahan saat memuat riwayat.',
+      );
+    } on TimeoutException {
+      throw Exception('Memuat riwayat absensi terlalu lama. Coba lagi.');
+    } catch (_) {
+      throw Exception('Tidak dapat memuat riwayat absensi. Coba lagi.');
+    }
+  }
+
   static Future<AuthResponse> checkIn({
     required double lat,
     required double lng,
@@ -483,14 +508,18 @@ class AuthService {
   }) async {
     try {
       final uri = Uri.parse('$baseUrl/api/absen/check-in');
+      final now = DateTime.now();
       final response = await http
           .post(
             uri,
             headers: await _headersWithAuth(),
             body: jsonEncode({
+              'attendance_date': _formatDate(now),
+              'check_in': _formatTime(now),
               'check_in_lat': lat,
               'check_in_lng': lng,
               'check_in_address': address,
+              'status': 'masuk',
             }),
           )
           .timeout(_requestTimeout);
@@ -528,13 +557,17 @@ class AuthService {
   }) async {
     try {
       final uri = Uri.parse('$baseUrl/api/absen/check-out');
+      final now = DateTime.now();
       final response = await http
           .post(
             uri,
             headers: await _headersWithAuth(),
             body: jsonEncode({
+              'attendance_date': _formatDate(now),
+              'check_out': _formatTime(now),
               'check_out_lat': lat,
               'check_out_lng': lng,
+              'check_out_location': '$lat,$lng',
               'check_out_address': address,
             }),
           )
@@ -566,29 +599,70 @@ class AuthService {
     }
   }
 
-  static Future<AuthResponse> requestLeave({required String reason}) async {
+  static Future<AuthResponse> requestLeave({
+    required String reason,
+    String? leaveType,
+    DateTime? startDate,
+    DateTime? endDate,
+    File? proofImage,
+  }) async {
     try {
-      final uri = Uri.parse('$baseUrl/api/absen/izin');
-      final response = await http
-          .post(
-            uri,
-            headers: await _headersWithAuth(),
-            body: jsonEncode({'alasan_izin': reason}),
-          )
-          .timeout(_requestTimeout);
+      final uri = Uri.parse('$baseUrl/api/izin');
+      final firstDate = _normalizeDate(startDate ?? DateTime.now());
+      final lastDate = _normalizeDate(endDate ?? firstDate);
 
-      final body = _tryDecode(response.body);
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return AuthResponse(
-          success: true,
-          message: _parseMessage(body) ?? 'Izin berhasil diajukan.',
-          token: null,
-          user: null,
+      if (lastDate.isBefore(firstDate)) {
+        return const AuthResponse(
+          success: false,
+          message: 'Tanggal selesai tidak boleh lebih awal dari tanggal mulai.',
         );
       }
+
+      final headers = await _headersWithAuth();
+      final leaveReason = _composeLeaveReason(
+        reason: reason,
+        leaveType: leaveType,
+        proofImage: proofImage,
+      );
+
+      var submittedCount = 0;
+      var cursor = firstDate;
+
+      while (!cursor.isAfter(lastDate)) {
+        final response = await http
+            .post(
+              uri,
+              headers: headers,
+              body: jsonEncode({
+                'date': _formatDate(cursor),
+                'alasan_izin': leaveReason,
+              }),
+            )
+            .timeout(_requestTimeout);
+
+        final body = _tryDecode(response.body);
+        if (response.statusCode != 200 && response.statusCode != 201) {
+          final fallbackMessage = submittedCount > 0
+              ? 'Sebagian izin sudah terkirim sebelum proses gagal.'
+              : 'Gagal mengajukan izin.';
+          return AuthResponse(
+            success: false,
+            message: _parseMessage(body) ?? fallbackMessage,
+          );
+        }
+
+        submittedCount += 1;
+        cursor = cursor.add(const Duration(days: 1));
+      }
+
+      final suffix = submittedCount > 1
+          ? ' untuk $submittedCount hari.'
+          : '.';
       return AuthResponse(
-        success: false,
-        message: _parseMessage(body) ?? 'Gagal mengajukan izin.',
+        success: true,
+        message: 'Izin berhasil diajukan$suffix',
+        token: null,
+        user: null,
       );
     } on TimeoutException {
       return const AuthResponse(
@@ -714,5 +788,48 @@ class AuthService {
     }
 
     return normalized;
+  }
+
+  static String _formatDate(DateTime value) {
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  static DateTime _normalizeDate(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  static String _composeLeaveReason({
+    required String reason,
+    String? leaveType,
+    File? proofImage,
+  }) {
+    final segments = <String>[];
+    final normalizedType = leaveType?.trim();
+    if (normalizedType != null && normalizedType.isNotEmpty) {
+      segments.add(normalizedType);
+    }
+
+    final normalizedReason = reason.trim();
+    if (normalizedReason.isNotEmpty) {
+      segments.add(normalizedReason);
+    }
+
+    if (proofImage != null) {
+      final fileName = proofImage.path.split(RegExp(r'[\\/]')).last.trim();
+      if (fileName.isNotEmpty) {
+        segments.add('Lampiran: $fileName');
+      }
+    }
+
+    return segments.join(' | ');
+  }
+
+  static String _formatTime(DateTime value) {
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 }

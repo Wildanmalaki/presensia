@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:presensia/services/auth_service.dart';
+import 'package:presensia/view/widgets/formizin.dart';
 
 class AttendancePage extends StatefulWidget {
   final Map<String, dynamic>? todayData;
@@ -72,23 +73,24 @@ class _AttendancePageState extends State<AttendancePage> {
   Future<void> _handleLeave() async {
     if (_isLeaveLoading) return;
 
+    final submitted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => const FormIzinPage()),
+    );
+    if (!mounted || submitted != true) {
+      return;
+    }
+
     setState(() {
       _isLeaveLoading = true;
     });
-
-    final result = await AuthService.requestLeave(
-      reason: 'Alasan tidak bisa hadir karena sakit',
-    );
 
     if (!mounted) return;
     setState(() {
       _isLeaveLoading = false;
     });
 
-    _showMessage(result.message ?? 'Permintaan izin telah dikirim.');
-    if (result.success) {
-      await widget.onRefresh();
-    }
+    await widget.onRefresh();
+    _showMessage('Permintaan izin telah dikirim.');
   }
 
   void _showMessage(String message) {
@@ -163,13 +165,6 @@ class _AttendancePageState extends State<AttendancePage> {
     return null;
   }
 
-  bool get _canRequestLeave {
-    final status = widget.todayData?['data']?['status']
-        ?.toString()
-        .toLowerCase();
-    return status == null || status.isEmpty;
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -195,7 +190,7 @@ class _AttendancePageState extends State<AttendancePage> {
           ),
           const SizedBox(height: 12),
           _LeaveActionCard(
-            onTap: _canRequestLeave ? _handleLeave : null,
+            onTap: _handleLeave,
             isLoading: _isLeaveLoading,
           ),
           const SizedBox(height: 20),

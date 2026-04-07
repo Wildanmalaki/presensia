@@ -19,7 +19,12 @@ class AttendanceTab extends StatefulWidget {
 }
 
 class _AttendanceTabState extends State<AttendanceTab> {
+  static const double _ppkdLatitude = -6.2108808;
+  static const double _ppkdLongitude = 106.8129424;
+  static const double _attendanceRadiusMeters = 400;
+
   GoogleMapController? _mapController;
+  LatLng? _cameraTarget;
   LatLng _currentLocation = const LatLng(
     -6.200000,
     106.816666,
@@ -86,6 +91,8 @@ class _AttendanceTabState extends State<AttendanceTab> {
 
       if (position != null) {
         _currentLocation = LatLng(position.latitude, position.longitude);
+        _syncLocationLabel(_currentLocation);
+        _updateZoneStatus(_currentLocation);
         debugPrint('📌 Updated location: $_currentLocation');
       }
 
@@ -137,6 +144,8 @@ class _AttendanceTabState extends State<AttendanceTab> {
                   position.latitude,
                   position.longitude,
                 );
+                _syncLocationLabel(_currentLocation);
+                _updateZoneStatus(_currentLocation);
                 _addMarker();
 
                 // Auto-update map camera
@@ -164,6 +173,23 @@ class _AttendanceTabState extends State<AttendanceTab> {
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
       ),
     );
+  }
+
+  void _syncLocationLabel(LatLng target) {
+    final lat = target.latitude.toStringAsFixed(6);
+    final lng = target.longitude.toStringAsFixed(6);
+    _currentAddress = 'PPKD Jakarta Pusat (Bendungan Hilir)';
+    _addressDetails = 'Posisi map: $lat, $lng';
+  }
+
+  void _updateZoneStatus(LatLng target) {
+    final distance = Geolocator.distanceBetween(
+      target.latitude,
+      target.longitude,
+      _ppkdLatitude,
+      _ppkdLongitude,
+    );
+    _isWithinZone = distance <= _attendanceRadiusMeters;
   }
 
   String _formatTime(DateTime dateTime) {
@@ -213,7 +239,18 @@ class _AttendanceTabState extends State<AttendanceTab> {
                 }
               },
               onCameraMove: (position) {
+                _cameraTarget = position.target;
                 debugPrint('📍 Camera moved to: ${position.target}');
+              },
+              onCameraIdle: () {
+                final target = _cameraTarget;
+                if (target == null || !mounted) return;
+                setState(() {
+                  _currentLocation = target;
+                  _syncLocationLabel(target);
+                  _updateZoneStatus(target);
+                  _addMarker();
+                });
               },
               initialCameraPosition: CameraPosition(
                 target: _currentLocation,
@@ -345,7 +382,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'SHIFT STARTS',
+                                    'Masuk jam pelatihan',
                                     style: theme.textTheme.labelSmall?.copyWith(
                                       color: const Color(0xFF8B93A7),
                                       fontWeight: FontWeight.w700,
@@ -353,7 +390,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    '09:00 AM',
+                                    '8.00 WIB',
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(
                                           color: const Color(0xFF21242C),
@@ -371,7 +408,9 @@ class _AttendanceTabState extends State<AttendanceTab> {
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFE8F8EE),
+                                color: _isWithinZone
+                                    ? const Color(0xFFE8F8EE)
+                                    : const Color(0xFFFFEFEF),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -380,15 +419,17 @@ class _AttendanceTabState extends State<AttendanceTab> {
                                   Text(
                                     'STATUS',
                                     style: theme.textTheme.labelSmall?.copyWith(
-                                      color: const Color(0xFF29A35A),
+                                      color: _isWithinZone
+                                          ? const Color(0xFF29A35A)
+                                          : const Color(0xFFE8515B),
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
                                     _isWithinZone
-                                        ? 'Within Zone'
-                                        : 'Out of Zone',
+                                        ? 'Bisa Absen'
+                                        : 'Di Luar Radius',
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(
                                           color: _isWithinZone
@@ -410,15 +451,21 @@ class _AttendanceTabState extends State<AttendanceTab> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Kehadiran telah dikonfirmasi'),
-                              ),
-                            );
-                          },
+                          onPressed: _isWithinZone
+                              ? () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Lokasi berada dalam radius PPKD.',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              : null,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2E7BEF),
+                            backgroundColor: _isWithinZone
+                                ? const Color(0xFF2E7BEF)
+                                : const Color(0xFFB8C2D9),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -426,7 +473,9 @@ class _AttendanceTabState extends State<AttendanceTab> {
                           ),
                           icon: const Icon(Icons.check_circle_outline),
                           label: Text(
-                            'Konfirmasi Kehadiran',
+                            _isWithinZone
+                                ? 'Dalam Radius PPKD'
+                                : 'Tidak Bisa Absen',
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,

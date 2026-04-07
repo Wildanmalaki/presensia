@@ -9,6 +9,7 @@ class BottomNavBar extends StatelessWidget {
   static const List<_BottomNavItemData> _items = [
     _BottomNavItemData(icon: Icons.dashboard_rounded, label: 'DASHBOARD'),
     _BottomNavItemData(icon: Icons.location_on_outlined, label: 'ATTENDANCE'),
+    _BottomNavItemData(icon: Icons.history_rounded, label: 'RIWAYAT'),
     _BottomNavItemData(icon: Icons.person_outline_rounded, label: 'PROFILE'),
   ];
 
