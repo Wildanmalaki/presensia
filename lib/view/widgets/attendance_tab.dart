@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -27,8 +28,10 @@ class _AttendanceTabState extends State<AttendanceTab> {
   bool _isLoadingLocation = true;
   bool _hasLocationPermission = false;
   bool _isWithinZone = true;
-  String _currentAddress = 'Kantor Pusat';
+  String _currentAddress =
+      'Pusat Pelatihan Kerja Daerah Jakarta Pusat (Bendungan Hilir)';
   String _addressDetails = 'Jalan: 15 Menit dari kantor pusat';
+  StreamSubscription<Position>? _positionStreamSubscription;
 
   @override
   void initState() {
@@ -100,6 +103,9 @@ class _AttendanceTabState extends State<AttendanceTab> {
           CameraUpdate.newLatLngZoom(_currentLocation, 16),
         );
       }
+
+      // ✅ Start listening to real-time location updates
+      _startLocationStream();
     } catch (e) {
       debugPrint('⚠️ Error initializing location: $e');
       if (mounted) {
@@ -109,6 +115,43 @@ class _AttendanceTabState extends State<AttendanceTab> {
         });
       }
     }
+  }
+
+  // ✅ NEW: Real-time location stream listener
+  void _startLocationStream() {
+    debugPrint('🔔 Starting real-time location stream...');
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 10, // Update kalo sudah bergerak 10 meter
+          ),
+        ).listen(
+          (Position position) {
+            debugPrint(
+              '📍 Location updated: ${position.latitude}, ${position.longitude}',
+            );
+            if (mounted) {
+              setState(() {
+                _currentLocation = LatLng(
+                  position.latitude,
+                  position.longitude,
+                );
+                _addMarker();
+
+                // Auto-update map camera
+                if (_mapController != null) {
+                  _mapController!.animateCamera(
+                    CameraUpdate.newLatLngZoom(_currentLocation, 16),
+                  );
+                }
+              });
+            }
+          },
+          onError: (e) {
+            debugPrint('❌ Location stream error: $e');
+          },
+        );
   }
 
   void _addMarker() {
@@ -155,6 +198,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
 
     return SizedBox.expand(
       child: Stack(
+        clipBehavior: Clip.hardEdge,
         children: [
           // Google Map
           Positioned.fill(
@@ -414,6 +458,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
 
   @override
   void dispose() {
+    _positionStreamSubscription?.cancel();
     _mapController?.dispose();
     super.dispose();
   }

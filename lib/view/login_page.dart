@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:presensia/services/auth_service.dart';
-import 'package:presensia/view/attendancehomepage.dart';
 import 'package:presensia/view/homepage.dart';
 
 class LoginPage extends StatefulWidget {
@@ -50,9 +49,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute<void>(
-          builder: (context) => const HomePage(),
-        ),
+        MaterialPageRoute<void>(builder: (context) => const HomePage()),
       );
       return;
     }
