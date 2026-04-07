@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -163,6 +164,14 @@ class AuthService {
       return _headers;
     }
     return {..._headers, 'Authorization': 'Bearer $token'};
+  }
+
+  static Future<Map<String, String>> _authOnlyHeaders() async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) {
+      return const {'Accept': 'application/json'};
+    }
+    return {'Accept': 'application/json', 'Authorization': 'Bearer $token'};
   }
 
   static Future<Map<String, dynamic>> _getAuthorized(String path) async {
@@ -363,6 +372,87 @@ class AuthService {
       throw Exception('Memuat profil terlalu lama. Coba lagi.');
     } catch (_) {
       throw Exception('Tidak dapat memuat data profil. Coba lagi.');
+    }
+  }
+
+  static Future<AuthResponse> updateProfile({required String name}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/profile');
+      final response = await http
+          .put(
+            uri,
+            headers: await _headersWithAuth(),
+            body: jsonEncode({'name': name}),
+          )
+          .timeout(_requestTimeout);
+
+      final body = _tryDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final updatedName = _extractUpdatedName(body) ?? name.trim();
+        if (updatedName.isNotEmpty) {
+          await saveUserName(updatedName);
+        }
+        return AuthResponse(
+          success: true,
+          message: _parseMessage(body) ?? 'Profil berhasil diperbarui.',
+          user: body?['data'] as Map<String, dynamic>?,
+        );
+      }
+
+      return AuthResponse(
+        success: false,
+        message: _parseMessage(body) ?? 'Gagal memperbarui profil.',
+      );
+    } on TimeoutException {
+      return const AuthResponse(
+        success: false,
+        message: 'Permintaan ubah profil terlalu lama. Coba lagi.',
+      );
+    } catch (_) {
+      return const AuthResponse(
+        success: false,
+        message: 'Tidak dapat terhubung ke server saat memperbarui profil.',
+      );
+    }
+  }
+
+  static Future<AuthResponse> updateProfilePhoto({
+    required File imageFile,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/profile/photo');
+      final request = http.MultipartRequest('POST', uri);
+      request.headers.addAll(await _authOnlyHeaders());
+      request.files.add(
+        await http.MultipartFile.fromPath('profile_photo', imageFile.path),
+      );
+
+      final streamedResponse = await request.send().timeout(_requestTimeout);
+      final response = await http.Response.fromStream(streamedResponse);
+      final body = _tryDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return AuthResponse(
+          success: true,
+          message: _parseMessage(body) ?? 'Foto profil berhasil diperbarui.',
+          user: body?['data'] as Map<String, dynamic>?,
+        );
+      }
+
+      return AuthResponse(
+        success: false,
+        message: _parseMessage(body) ?? 'Gagal memperbarui foto profil.',
+      );
+    } on TimeoutException {
+      return const AuthResponse(
+        success: false,
+        message: 'Upload foto profil terlalu lama. Coba lagi.',
+      );
+    } catch (_) {
+      return const AuthResponse(
+        success: false,
+        message: 'Tidak dapat terhubung ke server saat upload foto profil.',
+      );
     }
   }
 
@@ -571,5 +661,58 @@ class AuthService {
       // ignore
     }
     return null;
+  }
+
+  static String? _extractUpdatedName(Map<String, dynamic>? body) {
+    final data = body?['data'];
+    if (data is Map<String, dynamic>) {
+      final name = data['name']?.toString().trim();
+      if (name != null && name.isNotEmpty) {
+        return name;
+      }
+      final user = data['user'];
+      if (user is Map<String, dynamic>) {
+        final nestedName = user['name']?.toString().trim();
+        if (nestedName != null && nestedName.isNotEmpty) {
+          return nestedName;
+        }
+      }
+    }
+    return null;
+  }
+
+  static String? resolveMediaUrl(String? rawUrl) {
+    if (rawUrl == null) {
+      return null;
+    }
+
+    final normalized = rawUrl.trim();
+    if (normalized.isEmpty || normalized.toLowerCase() == 'null') {
+      return null;
+    }
+
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) {
+      return null;
+    }
+
+    if (!uri.hasScheme) {
+      final path = normalized.startsWith('/') ? normalized : '/$normalized';
+      return '$baseUrl$path';
+    }
+
+    final baseUri = Uri.parse(baseUrl);
+    final host = uri.host.toLowerCase();
+    if (host == '127.0.0.1' || host == 'localhost') {
+      return uri
+          .replace(
+            scheme: baseUri.scheme,
+            host: baseUri.host,
+            port: baseUri.hasPort ? baseUri.port : 443,
+          )
+          .toString();
+    }
+
+    return normalized;
   }
 }

@@ -66,30 +66,67 @@ class _HomePageState extends State<HomePage> {
       _isLoadingData = true;
     });
 
-    try {
-      final results = await Future.wait<Map<String, dynamic>>([
-        AuthService.fetchProfile(),
-        AuthService.fetchAttendanceStats(),
-        AuthService.fetchAttendanceToday(),
-      ]);
+    Map<String, dynamic>? latestProfile = _profileData;
+    Map<String, dynamic>? latestStats = _statsData;
+    Map<String, dynamic>? latestToday = _todayData;
+    final errors = <String>[];
 
-      if (!mounted) return;
-      setState(() {
-        _profileData = results[0];
-        _statsData = results[1];
-        _todayData = results[2];
-      });
+    try {
+      latestProfile = await AuthService.fetchProfile();
     } catch (error) {
-      if (mounted) {
-        _showMessage(context, error.toString().replaceFirst('Exception: ', ''));
+      errors.add(error.toString().replaceFirst('Exception: ', ''));
+    }
+
+    try {
+      latestStats = await AuthService.fetchAttendanceStats();
+    } catch (error) {
+      errors.add(error.toString().replaceFirst('Exception: ', ''));
+    }
+
+    try {
+      latestToday = await AuthService.fetchAttendanceToday();
+    } catch (error) {
+      errors.add(error.toString().replaceFirst('Exception: ', ''));
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _profileData = latestProfile;
+      _statsData = latestStats;
+      _todayData = latestToday;
+      final profileName = _extractProfileName(latestProfile);
+      if (profileName != null) {
+        _userName = profileName;
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingData = false;
-        });
+      _isLoadingData = false;
+    });
+
+    if (errors.isNotEmpty) {
+      _showMessage(context, errors.first);
+    }
+  }
+
+  String? _extractProfileName(Map<String, dynamic>? profileResponse) {
+    final data = profileResponse?['data'];
+    if (data is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final directName = data['name']?.toString().trim();
+    if (directName != null && directName.isNotEmpty) {
+      return directName;
+    }
+
+    final user = data['user'];
+    if (user is Map<String, dynamic>) {
+      final nestedName = user['name']?.toString().trim();
+      if (nestedName != null && nestedName.isNotEmpty) {
+        return nestedName;
       }
     }
+
+    return null;
   }
 
   Future<void> _handleCheckIn() async {
@@ -271,7 +308,11 @@ class _HomePageState extends State<HomePage> {
     }
 
     if (_selectedIndex == 2) {
-      return ProfileTab(profileData: _profileData, onRefresh: _refreshData);
+      return ProfileTab(
+        profileData: _profileData,
+        currentUserName: _userName,
+        onRefresh: _refreshData,
+      );
     }
 
     return SingleChildScrollView(

@@ -278,26 +278,33 @@ class _AttendanceTabState extends State<AttendanceTab> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _currentAddress,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  color: const Color(0xFF21242C),
-                                  fontWeight: FontWeight.w800,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _currentAddress,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: const Color(0xFF21242C),
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _addressDetails,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: const Color(0xFF8B93A7),
-                                  fontWeight: FontWeight.w600,
+                                const SizedBox(height: 4),
+                                Text(
+                                  _addressDetails,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: const Color(0xFF8B93A7),
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 12),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
