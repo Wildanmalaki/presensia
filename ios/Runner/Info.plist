@@ -66,5 +66,15 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Aplikasi memerlukan akses lokasi Anda untuk verifikasi kehadiran</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Aplikasi memerlukan akses lokasi Anda untuk verifikasi kehadiran</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Aplikasi memerlukan akses lokasi Anda untuk verifikasi kehadiran</string>
+	<key>io.flutter.embedded_views_preview</key>
+	<true/>
+	<key>GMS_API_KEY</key>
+	<string>AIzaSyAaAVJ7eYsCN5CxQjMF9vMFJ7cBa51I_SA</string>
 </dict>
 </plist>

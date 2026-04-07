@@ -4,6 +4,76 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+List<Map<String, dynamic>> _extractJsonList(
+  Map<String, dynamic> source,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final value = source[key];
+    if (value is List) {
+      return value.whereType<Map<String, dynamic>>().toList();
+    }
+    if (value is Map<String, dynamic>) {
+      final nestedList = value['data'];
+      if (nestedList is List) {
+        return nestedList.whereType<Map<String, dynamic>>().toList();
+      }
+    }
+  }
+  return const <Map<String, dynamic>>[];
+}
+
+String _readString(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    final value = source[key];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+    if (value != null) {
+      final text = value.toString().trim();
+      if (text.isNotEmpty && text.toLowerCase() != 'null') {
+        return text;
+      }
+    }
+  }
+  return '';
+}
+
+int _readInt(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    final value = source[key];
+    if (value is int) {
+      return value;
+    }
+    if (value is String) {
+      final parsed = int.tryParse(value);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+  }
+  return 0;
+}
+
+List<TrainingOption> _deduplicateTrainings(List<TrainingOption> trainings) {
+  final seenKeys = <String>{};
+  final result = <TrainingOption>[];
+
+  for (final training in trainings) {
+    final normalizedTitle = training.title.trim().toLowerCase();
+    final key = training.id > 0
+        ? 'id:${training.id}'
+        : 'title:$normalizedTitle';
+    if (normalizedTitle.isEmpty || seenKeys.contains(key)) {
+      continue;
+    }
+    seenKeys.add(key);
+    result.add(training);
+  }
+
+  return result;
+}
+
 class TrainingOption {
   const TrainingOption({required this.id, required this.title});
 
@@ -11,9 +81,16 @@ class TrainingOption {
   final String title;
 
   factory TrainingOption.fromJson(Map<String, dynamic> json) {
+    final resolvedTitle = _readString(json, const [
+      'title',
+      'name',
+      'training_name',
+      'nama',
+    ]);
+
     return TrainingOption(
-      id: json['id'] as int,
-      title: (json['title'] ?? '') as String,
+      id: _readInt(json, const ['id', 'training_id']),
+      title: resolvedTitle.isEmpty ? 'Jurusan tanpa nama' : resolvedTitle,
     );
   }
 }
@@ -30,15 +107,29 @@ class BatchOption {
   final List<TrainingOption> trainings;
 
   factory BatchOption.fromJson(Map<String, dynamic> json) {
-    final trainings =
-        (json['trainings'] as List<dynamic>? ?? <dynamic>[])
-            .whereType<Map<String, dynamic>>()
-            .map(TrainingOption.fromJson)
-            .toList();
+    final rawTrainings = _extractJsonList(json, const [
+      'trainings',
+      'training',
+      'jurusans',
+      'majors',
+    ]);
+    final parsedTrainings = rawTrainings.map(TrainingOption.fromJson).toList();
+    final trainings = _deduplicateTrainings(parsedTrainings);
+    final batchLabel = _readString(json, const [
+      'label',
+      'name',
+      'title',
+      'batch_name',
+    ]);
+    final batchNumber = _readString(json, const ['batch_ke', 'batch']);
 
     return BatchOption(
-      id: json['id'] as int,
-      label: 'Batch ${(json['batch_ke'] ?? '').toString()}',
+      id: _readInt(json, const ['id', 'batch_id']),
+      label: batchLabel.isNotEmpty
+          ? batchLabel
+          : batchNumber.isNotEmpty
+          ? 'Batch $batchNumber'
+          : 'Batch',
       trainings: trainings,
     );
   }
@@ -60,38 +151,45 @@ class AuthResponse {
 
 class AuthService {
   static const String baseUrl = 'https://appabsensi.mobileprojp.com';
-  // Fallback list of 18 trainings to ensure UI shows expected options
-  static const List<TrainingOption> _fallbackTrainings = <TrainingOption>[
-    TrainingOption(id: 1001, title: 'Mobile Programming'),
-    TrainingOption(id: 1002, title: 'Web Development'),
-    TrainingOption(id: 1003, title: 'Data Science'),
-    TrainingOption(id: 1004, title: 'Network Engineering'),
-    TrainingOption(id: 1005, title: 'Multimedia'),
-    TrainingOption(id: 1006, title: 'Database Administration'),
-    TrainingOption(id: 1007, title: 'Cloud Computing'),
-    TrainingOption(id: 1008, title: 'Cyber Security'),
-    TrainingOption(id: 1009, title: 'Embedded Systems'),
-    TrainingOption(id: 1010, title: 'Software Engineering'),
-    TrainingOption(id: 1011, title: 'Game Development'),
-    TrainingOption(id: 1012, title: 'UI/UX Design'),
-    TrainingOption(id: 1013, title: 'Digital Marketing'),
-    TrainingOption(id: 1014, title: 'Business Information Systems'),
-    TrainingOption(id: 1015, title: 'Artificial Intelligence'),
-    TrainingOption(id: 1016, title: 'Machine Learning'),
-    TrainingOption(id: 1017, title: 'Internet of Things'),
-    TrainingOption(id: 1018, title: 'Graphic Design'),
-  ];
   static const Duration _requestTimeout = Duration(seconds: 15);
   static const Map<String, String> _headers = {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
   };
 
+  static Future<Map<String, String>> _headersWithAuth() async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) {
+      return _headers;
+    }
+    return {..._headers, 'Authorization': 'Bearer $token'};
+  }
+
+  static Future<Map<String, dynamic>> _getAuthorized(String path) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final response = await http
+        .get(uri, headers: await _headersWithAuth())
+        .timeout(_requestTimeout);
+    final body = _tryDecode(response.body);
+    if (response.statusCode == 200) {
+      return body ?? <String, dynamic>{};
+    }
+    throw Exception(
+      _parseMessage(body) ?? 'Terjadi kesalahan saat memuat data.',
+    );
+  }
+
   static const String _tokenKey = 'auth_token';
+  static const String _userNameKey = 'user_name';
 
   static Future<bool> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.setString(_tokenKey, token);
+  }
+
+  static Future<bool> saveUserName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.setString(_userNameKey, name);
   }
 
   static Future<String?> getToken() async {
@@ -99,9 +197,15 @@ class AuthService {
     return prefs.getString(_tokenKey);
   }
 
+  static Future<String?> getUserName() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_userNameKey);
+  }
+
   static Future<void> clearToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
+    await prefs.remove(_userNameKey);
   }
 
   static Future<AuthResponse> login({
@@ -120,6 +224,12 @@ class AuthService {
       final auth = _fromResponse(response);
       if (auth.success && auth.token != null) {
         await saveToken(auth.token!);
+      }
+      if (auth.success && auth.user != null) {
+        final name = (auth.user!['name'] ?? '').toString().trim();
+        if (name.isNotEmpty) {
+          await saveUserName(name);
+        }
       }
       return auth;
     } on TimeoutException {
@@ -160,15 +270,17 @@ class AuthService {
     try {
       final uri = Uri.parse('$baseUrl/api/register');
       final response = await http
-          .post(
-            uri,
-            headers: _headers,
-            body: jsonEncode(body),
-          )
+          .post(uri, headers: _headers, body: jsonEncode(body))
           .timeout(_requestTimeout);
       final auth = _fromResponse(response);
       if (auth.success && auth.token != null) {
         await saveToken(auth.token!);
+      }
+      if (auth.success && auth.user != null) {
+        final name = (auth.user!['name'] ?? '').toString().trim();
+        if (name.isNotEmpty) {
+          await saveUserName(name);
+        }
       }
       return auth;
     } on TimeoutException {
@@ -206,34 +318,198 @@ class AuthService {
           .map(BatchOption.fromJson)
           .toList();
 
-      // Ensure each batch has at least 18 trainings by merging fallback trainings
-      final merged = parsed.map((batch) {
-        final existing = List<TrainingOption>.from(batch.trainings);
-        final existingTitles = existing
-            .map((t) => t.title.toLowerCase().trim())
-            .toSet();
-
-        for (final fallback in _fallbackTrainings) {
-          if (existing.length >= 18) break;
-          final key = fallback.title.toLowerCase().trim();
-          if (!existingTitles.contains(key)) {
-            existing.add(fallback);
-            existingTitles.add(key);
-          }
-        }
-
-        return BatchOption(
-          id: batch.id,
-          label: batch.label,
-          trainings: existing,
-        );
-      }).toList();
-
-      return merged;
+      return parsed;
     } on TimeoutException {
       throw Exception('Memuat batch terlalu lama. Coba lagi.');
     } catch (_) {
       throw Exception('Tidak dapat memuat data batch. Coba lagi.');
+    }
+  }
+
+  static Future<List<TrainingOption>> fetchTrainingOptions() async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/trainings');
+      final response = await http
+          .get(uri, headers: _headers)
+          .timeout(_requestTimeout);
+      final body = _tryDecode(response.body);
+
+      if (response.statusCode != 200) {
+        throw Exception(_parseMessage(body) ?? 'Gagal memuat data jurusan.');
+      }
+
+      final data = body?['data'];
+      if (data is! List) {
+        return <TrainingOption>[];
+      }
+
+      final trainings = data
+          .whereType<Map<String, dynamic>>()
+          .map(TrainingOption.fromJson)
+          .toList();
+
+      return _deduplicateTrainings(trainings);
+    } on TimeoutException {
+      throw Exception('Memuat jurusan terlalu lama. Coba lagi.');
+    } catch (_) {
+      throw Exception('Tidak dapat memuat data jurusan. Coba lagi.');
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchProfile() async {
+    try {
+      return await _getAuthorized('/api/profile');
+    } on TimeoutException {
+      throw Exception('Memuat profil terlalu lama. Coba lagi.');
+    } catch (_) {
+      throw Exception('Tidak dapat memuat data profil. Coba lagi.');
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchAttendanceStats() async {
+    try {
+      return await _getAuthorized('/api/absen/stats');
+    } on TimeoutException {
+      throw Exception('Memuat statistik terlalu lama. Coba lagi.');
+    } catch (_) {
+      throw Exception('Tidak dapat memuat statistik absen. Coba lagi.');
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchAttendanceToday() async {
+    try {
+      return await _getAuthorized('/api/absen/today');
+    } on TimeoutException {
+      throw Exception('Memuat data absensi hari ini terlalu lama. Coba lagi.');
+    } catch (_) {
+      throw Exception('Tidak dapat memuat data absensi hari ini. Coba lagi.');
+    }
+  }
+
+  static Future<AuthResponse> checkIn({
+    required double lat,
+    required double lng,
+    required String address,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/absen/check-in');
+      final response = await http
+          .post(
+            uri,
+            headers: await _headersWithAuth(),
+            body: jsonEncode({
+              'check_in_lat': lat,
+              'check_in_lng': lng,
+              'check_in_address': address,
+            }),
+          )
+          .timeout(_requestTimeout);
+
+      final body = _tryDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return AuthResponse(
+          success: true,
+          message: _parseMessage(body) ?? 'Absen masuk berhasil.',
+          token: null,
+          user: null,
+        );
+      }
+      return AuthResponse(
+        success: false,
+        message: _parseMessage(body) ?? 'Gagal melakukan absen masuk.',
+      );
+    } on TimeoutException {
+      return const AuthResponse(
+        success: false,
+        message: 'Permintaan absen masuk terlalu lama. Coba lagi.',
+      );
+    } catch (_) {
+      return const AuthResponse(
+        success: false,
+        message: 'Tidak dapat terhubung ke server saat absen masuk.',
+      );
+    }
+  }
+
+  static Future<AuthResponse> checkOut({
+    required double lat,
+    required double lng,
+    required String address,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/absen/check-out');
+      final response = await http
+          .post(
+            uri,
+            headers: await _headersWithAuth(),
+            body: jsonEncode({
+              'check_out_lat': lat,
+              'check_out_lng': lng,
+              'check_out_address': address,
+            }),
+          )
+          .timeout(_requestTimeout);
+
+      final body = _tryDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return AuthResponse(
+          success: true,
+          message: _parseMessage(body) ?? 'Absen keluar berhasil.',
+          token: null,
+          user: null,
+        );
+      }
+      return AuthResponse(
+        success: false,
+        message: _parseMessage(body) ?? 'Gagal melakukan absen keluar.',
+      );
+    } on TimeoutException {
+      return const AuthResponse(
+        success: false,
+        message: 'Permintaan absen keluar terlalu lama. Coba lagi.',
+      );
+    } catch (_) {
+      return const AuthResponse(
+        success: false,
+        message: 'Tidak dapat terhubung ke server saat absen keluar.',
+      );
+    }
+  }
+
+  static Future<AuthResponse> requestLeave({required String reason}) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/absen/izin');
+      final response = await http
+          .post(
+            uri,
+            headers: await _headersWithAuth(),
+            body: jsonEncode({'alasan_izin': reason}),
+          )
+          .timeout(_requestTimeout);
+
+      final body = _tryDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return AuthResponse(
+          success: true,
+          message: _parseMessage(body) ?? 'Izin berhasil diajukan.',
+          token: null,
+          user: null,
+        );
+      }
+      return AuthResponse(
+        success: false,
+        message: _parseMessage(body) ?? 'Gagal mengajukan izin.',
+      );
+    } on TimeoutException {
+      return const AuthResponse(
+        success: false,
+        message: 'Permintaan izin terlalu lama. Coba lagi.',
+      );
+    } catch (_) {
+      return const AuthResponse(
+        success: false,
+        message: 'Tidak dapat terhubung ke server saat mengajukan izin.',
+      );
     }
   }
 

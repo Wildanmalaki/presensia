@@ -18,6 +18,7 @@ class _RegistrasionPageState extends State<RegistrasionPage> {
       TextEditingController();
 
   List<BatchOption> _batchOptions = const <BatchOption>[];
+  List<TrainingOption> _trainingOptions = const <TrainingOption>[];
   BatchOption? _selectedBatch;
   TrainingOption? _selectedTraining;
   String? _selectedJenisKelamin;
@@ -54,11 +55,13 @@ class _RegistrasionPageState extends State<RegistrasionPage> {
 
     try {
       final batches = await AuthService.fetchBatchOptions();
+      final trainings = await AuthService.fetchTrainingOptions();
 
       if (!mounted) return;
 
       setState(() {
         _batchOptions = batches;
+        _trainingOptions = trainings;
         _isLoadingOptions = false;
       });
     } catch (error) {
@@ -125,7 +128,7 @@ class _RegistrasionPageState extends State<RegistrasionPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final trainings = _selectedBatch?.trainings ?? const <TrainingOption>[];
+    final trainings = _trainingOptions;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F9FF),

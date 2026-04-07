@@ -1,96 +1,25 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:presensia/services/auth_service.dart';
-import 'package:presensia/view/attendancehomepage.dart';
-import 'package:presensia/view/widgets/navbar.dart';
-import 'package:presensia/view/widgets/app_drawer.dart';
-import 'package:presensia/view/widgets/attendance_tab.dart';
-import 'package:presensia/view/widgets/profile_tab.dart';
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+class AttendancePage extends StatefulWidget {
+  final Map<String, dynamic>? todayData;
+  final Map<String, dynamic>? statsData;
+  final Future<void> Function() onRefresh;
+
+  const AttendancePage({
+    super.key,
+    this.todayData,
+    this.statsData,
+    required this.onRefresh,
+  });
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  State<AttendancePage> createState() => _AttendancePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  int _selectedIndex = 0;
-  late DateTime _now;
-  Timer? _clockTimer;
-  String _userName = 'Pengguna';
-  Map<String, dynamic>? _profileData;
-  Map<String, dynamic>? _statsData;
-  Map<String, dynamic>? _todayData;
-  bool _isLoadingData = true;
+class _AttendancePageState extends State<AttendancePage> {
   bool _isAttendanceLoading = false;
   bool _isLeaveLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _now = DateTime.now();
-    _loadUserName();
-    _refreshData();
-    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() {
-        _now = DateTime.now();
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _clockTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _loadUserName() async {
-    final savedName = await AuthService.getUserName();
-    if (!mounted) return;
-
-    final normalizedName = savedName?.trim();
-    if (normalizedName == null || normalizedName.isEmpty) return;
-
-    setState(() {
-      _userName = normalizedName;
-    });
-  }
-
-  Future<void> _refreshData() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoadingData = true;
-    });
-
-    try {
-      final results = await Future.wait<Map<String, dynamic>>([
-        AuthService.fetchProfile(),
-        AuthService.fetchAttendanceStats(),
-        AuthService.fetchAttendanceToday(),
-      ]);
-
-      if (!mounted) return;
-      setState(() {
-        _profileData = results[0];
-        _statsData = results[1];
-        _todayData = results[2];
-      });
-    } catch (error) {
-      if (mounted) {
-        _showMessage(context, error.toString().replaceFirst('Exception: ', ''));
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingData = false;
-        });
-      }
-    }
-  }
 
   Future<void> _handleCheckIn() async {
     if (_isAttendanceLoading) return;
@@ -110,9 +39,9 @@ class _HomePageState extends State<HomePage> {
       _isAttendanceLoading = false;
     });
 
-    _showMessage(context, result.message ?? 'Proses absen selesai.');
+    _showMessage(result.message ?? 'Proses absen selesai.');
     if (result.success) {
-      await _refreshData();
+      await widget.onRefresh();
     }
   }
 
@@ -134,9 +63,9 @@ class _HomePageState extends State<HomePage> {
       _isAttendanceLoading = false;
     });
 
-    _showMessage(context, result.message ?? 'Proses absen keluar selesai.');
+    _showMessage(result.message ?? 'Proses absen keluar selesai.');
     if (result.success) {
-      await _refreshData();
+      await widget.onRefresh();
     }
   }
 
@@ -156,22 +85,27 @@ class _HomePageState extends State<HomePage> {
       _isLeaveLoading = false;
     });
 
-    _showMessage(context, result.message ?? 'Permintaan izin telah dikirim.');
+    _showMessage(result.message ?? 'Permintaan izin telah dikirim.');
     if (result.success) {
-      await _refreshData();
+      await widget.onRefresh();
     }
   }
 
-  void _showMessage(BuildContext context, String message) {
+  void _showMessage(String message) {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String get _attendanceActionLabel {
-    final status = _todayData?['data']?['status']?.toString().toLowerCase();
+    final status = widget.todayData?['data']?['status']
+        ?.toString()
+        .toLowerCase();
     final hasCheckOut =
-        (_todayData?['data']?['check_out_time']?.toString().trim().isNotEmpty ==
+        (widget.todayData?['data']?['check_out_time']
+            ?.toString()
+            .trim()
+            .isNotEmpty ==
         true);
 
     if (status == null || status.isEmpty) {
@@ -187,9 +121,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   String get _attendanceActionSubtitle {
-    final status = _todayData?['data']?['status']?.toString().toLowerCase();
+    final status = widget.todayData?['data']?['status']
+        ?.toString()
+        .toLowerCase();
     final hasCheckOut =
-        (_todayData?['data']?['check_out_time']?.toString().trim().isNotEmpty ==
+        (widget.todayData?['data']?['check_out_time']
+            ?.toString()
+            .trim()
+            .isNotEmpty ==
         true);
 
     if (status == null || status.isEmpty) {
@@ -205,9 +144,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   VoidCallback? get _attendanceActionCallback {
-    final status = _todayData?['data']?['status']?.toString().toLowerCase();
+    final status = widget.todayData?['data']?['status']
+        ?.toString()
+        .toLowerCase();
     final hasCheckOut =
-        (_todayData?['data']?['check_out_time']?.toString().trim().isNotEmpty ==
+        (widget.todayData?['data']?['check_out_time']
+            ?.toString()
+            .trim()
+            .isNotEmpty ==
         true);
 
     if (status == null || status.isEmpty) {
@@ -220,90 +164,29 @@ class _HomePageState extends State<HomePage> {
   }
 
   bool get _canRequestLeave {
-    final status = _todayData?['data']?['status']?.toString().toLowerCase();
+    final status = widget.todayData?['data']?['status']
+        ?.toString()
+        .toLowerCase();
     return status == null || status.isEmpty;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      drawer: AppDrawer(
-        name: _userName,
-        onLogout: () async {
-          await AuthService.clearToken();
-          if (!mounted) return;
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute<void>(
-              builder: (context) => const AttendanceHomepage(),
-            ),
-            (route) => false,
-          );
-        },
-      ),
-      backgroundColor: const Color(0xFFF5F7FB),
-      body: SafeArea(child: _buildBody()),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildBody() {
     final theme = Theme.of(context);
-
-    if (_isLoadingData) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_selectedIndex == 1) {
-      return AttendanceTab(
-        statsData: _statsData,
-        todayData: _todayData,
-        onRefresh: _refreshData,
-      );
-    }
-
-    if (_selectedIndex == 2) {
-      return ProfileTab(profileData: _profileData, onRefresh: _refreshData);
-    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _TopBar(
-            onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
-            onNotificationTap: () {
-              _showMessage(context, 'Tidak ada notifikasi baru.');
-            },
-          ),
-          const SizedBox(height: 22),
           Text(
-            _greetingForHour(_now.hour),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF8B93A7),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _userName,
+            'Absensi Harian',
             style: theme.textTheme.headlineSmall?.copyWith(
               color: const Color(0xFF21242C),
               fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 20),
-          _CurrentTimeCard(now: _now),
-          const SizedBox(height: 18),
           _AttendanceActionCard(
             label: _attendanceActionLabel,
             subtitle: _attendanceActionSubtitle,
@@ -315,342 +198,18 @@ class _HomePageState extends State<HomePage> {
             onTap: _canRequestLeave ? _handleLeave : null,
             isLoading: _isLeaveLoading,
           ),
-          const SizedBox(height: 18),
-          const _LocationCard(),
           const SizedBox(height: 20),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Kehadiran Minggu Ini',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: const Color(0xFF20232B),
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _selectedIndex = 1;
-                  });
-                },
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF2E7BEF),
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(
-                  'Lihat Detail',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF2E7BEF),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
+          Text(
+            'Kehadiran Minggu Ini',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: const Color(0xFF20232B),
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 14),
           const _AttendanceWeekRow(),
           const SizedBox(height: 18),
-          _ProductivityCard(statsData: _statsData),
-        ],
-      ),
-    );
-  }
-
-  String _greetingForHour(int hour) {
-    if (hour < 11) {
-      return 'Selamat Pagi,';
-    }
-    if (hour < 15) {
-      return 'Selamat Siang,';
-    }
-    if (hour < 18) {
-      return 'Selamat Sore,';
-    }
-    return 'Selamat Malam,';
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onMenuTap, required this.onNotificationTap});
-
-  final VoidCallback onMenuTap;
-  final VoidCallback onNotificationTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Row(
-      children: [
-        _HeaderIconButton(icon: Icons.menu_rounded, onTap: onMenuTap),
-        const SizedBox(width: 10),
-        Text(
-          'Presensia',
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: const Color(0xFF2E7BEF),
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const Spacer(),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            _HeaderIconButton(
-              icon: Icons.notifications_none_rounded,
-              onTap: onNotificationTap,
-            ),
-            Positioned(
-              top: 10,
-              right: 10,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFF8A4C),
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _HeaderIconButton extends StatelessWidget {
-  const _HeaderIconButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Icon(icon, color: const Color(0xFF5E667A), size: 20),
-        ),
-      ),
-    );
-  }
-}
-
-class _CurrentTimeCard extends StatelessWidget {
-  const _CurrentTimeCard({required this.now});
-
-  final DateTime now;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final formattedTime = _formatTime(now);
-    final formattedDate = _formatDate(now);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'CURRENT TIME',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: const Color(0xFF6BA0F5),
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.3,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            formattedTime,
-            style: theme.textTheme.displaySmall?.copyWith(
-              color: const Color(0xFF242833),
-              fontWeight: FontWeight.w800,
-              height: 1,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-          const SizedBox(height: 6),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
-            child: Text(
-              formattedDate,
-              key: ValueKey<String>(formattedDate),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF8A92A6),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFEB5757),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Belum Absen',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF657089),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatTime(DateTime value) {
-    final hour = value.hour.toString().padLeft(2, '0');
-    final minute = value.minute.toString().padLeft(2, '0');
-    final second = value.second.toString().padLeft(2, '0');
-    return '$hour:$minute:$second';
-  }
-
-  String _formatDate(DateTime value) {
-    const days = [
-      'Senin',
-      'Selasa',
-      'Rabu',
-      'Kamis',
-      'Jumat',
-      'Sabtu',
-      'Minggu',
-    ];
-    const months = [
-      'Januari',
-      'Februari',
-      'Maret',
-      'April',
-      'Mei',
-      'Juni',
-      'Juli',
-      'Agustus',
-      'September',
-      'Oktober',
-      'November',
-      'Desember',
-    ];
-
-    final dayName = days[value.weekday - 1];
-    final monthName = months[value.month - 1];
-    return '$dayName, ${value.day} $monthName ${value.year}';
-  }
-}
-
-class _LocationCard extends StatelessWidget {
-  const _LocationCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEAF2FF),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.place_rounded,
-              color: Color(0xFF2E7BEF),
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Radius Kehadiran',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: const Color(0xFF232833),
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Anda berada di dalam jangkauan',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF8A92A6),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8F8EE),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              'SCOPE',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: const Color(0xFF35A867),
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ),
+          _ProductivityCard(statsData: widget.statsData),
         ],
       ),
     );
