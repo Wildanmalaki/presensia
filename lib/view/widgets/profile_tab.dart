@@ -405,7 +405,7 @@ class _ProfileTabState extends State<ProfileTab> {
             const SizedBox(height: 24),
             Center(
               child: Text(
-                'PRESENSIA V2.4.0 - BUILT FOR EXCELLENCE',
+                'PRESENSIA V1.0.0 - COPYRIGHT 2024 WMTECH.ID',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: palette.textMuted,
