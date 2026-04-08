@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:presensia/services/auth_service.dart';
+import 'package:presensia/theme/app_theme.dart';
 import 'package:presensia/view/homepage.dart';
 
 class LoginPage extends StatefulWidget {
@@ -66,16 +67,27 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FF),
+      backgroundColor: palette.backgroundSoft,
       body: SafeArea(
         child: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFFF9FBFF), Color(0xFFF4F7FF), Color(0xFFF8FAFF)],
+              colors: palette.isDark
+                  ? const [
+                      Color(0xFF07111F),
+                      Color(0xFF0A1424),
+                      Color(0xFF111E31),
+                    ]
+                  : const [
+                      Color(0xFFF9FBFF),
+                      Color(0xFFF4F7FF),
+                      Color(0xFFF8FAFF),
+                    ],
             ),
           ),
           child: Align(
@@ -101,7 +113,7 @@ class _LoginPageState extends State<LoginPage> {
                         Text(
                           'v1.0.0',
                           style: theme.textTheme.labelMedium?.copyWith(
-                            color: const Color(0xFFA8AFBE),
+                            color: palette.textMuted,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -128,7 +140,7 @@ class _LoginPageState extends State<LoginPage> {
                       child: Text(
                         'Selamat Datang',
                         style: theme.textTheme.headlineSmall?.copyWith(
-                          color: const Color(0xFF222531),
+                          color: palette.textPrimary,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -139,7 +151,7 @@ class _LoginPageState extends State<LoginPage> {
                         'Silakan masuk untuk mencatat kehadiran Anda hari ini.',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: const Color(0xFF7A8090),
+                          color: palette.textSecondary,
                           height: 1.5,
                           fontWeight: FontWeight.w500,
                         ),
@@ -150,11 +162,12 @@ class _LoginPageState extends State<LoginPage> {
                       width: double.infinity,
                       padding: const EdgeInsets.fromLTRB(18, 22, 18, 18),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: palette.surface,
                         borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: palette.border),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
+                            color: palette.shadow,
                             blurRadius: 24,
                             offset: const Offset(0, 10),
                           ),
@@ -292,7 +305,7 @@ class _LoginPageState extends State<LoginPage> {
                           vertical: 12,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF1F4FB),
+                          color: palette.surfaceMuted,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Wrap(
@@ -302,7 +315,7 @@ class _LoginPageState extends State<LoginPage> {
                             Text(
                               'Butuh bantuan IT?',
                               style: theme.textTheme.bodyMedium?.copyWith(
-                                color: const Color(0xFF7A8090),
+                                color: palette.textSecondary,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -358,11 +371,12 @@ class _LoginFieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Text(
       label,
       style: theme.textTheme.labelSmall?.copyWith(
-        color: const Color(0xFF7A8090),
+        color: palette.textSecondary,
         fontWeight: FontWeight.w800,
         letterSpacing: 0.9,
       ),
@@ -389,20 +403,22 @@ class _LoginTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.appPalette;
+
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscureText,
       decoration: InputDecoration(
         hintText: hintText,
-        hintStyle: const TextStyle(
-          color: Color(0xFFB0B6C6),
+        hintStyle: TextStyle(
+          color: palette.textMuted,
           fontWeight: FontWeight.w600,
         ),
-        prefixIcon: Icon(prefixIcon, color: const Color(0xFF8A90A1), size: 20),
+        prefixIcon: Icon(prefixIcon, color: palette.textSecondary, size: 20),
         suffixIcon: suffixIcon,
         filled: true,
-        fillColor: const Color(0xFFF2F4FB),
+        fillColor: palette.surfaceMuted,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
           vertical: 16,

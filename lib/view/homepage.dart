@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:presensia/main.dart';
 import 'package:presensia/services/auth_service.dart';
+import 'package:presensia/theme/app_theme.dart';
 import 'package:presensia/view/attendancehomepage.dart';
 import 'package:presensia/view/widgets/navbar.dart';
 import 'package:presensia/view/widgets/app_drawer.dart';
@@ -214,6 +216,28 @@ class _HomePageState extends State<HomePage> {
     return null;
   }
 
+  String? _extractProfilePhoto(Map<String, dynamic>? profileResponse) {
+    final data = profileResponse?['data'];
+    if (data is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final directPhoto = data['profile_photo']?.toString().trim();
+    if (directPhoto != null && directPhoto.isNotEmpty) {
+      return AuthService.resolveMediaUrl(directPhoto);
+    }
+
+    final user = data['user'];
+    if (user is Map<String, dynamic>) {
+      final nestedPhoto = user['profile_photo']?.toString().trim();
+      if (nestedPhoto != null && nestedPhoto.isNotEmpty) {
+        return AuthService.resolveMediaUrl(nestedPhoto);
+      }
+    }
+
+    return null;
+  }
+
   Future<void> _handleCheckIn() async {
     if (_isAttendanceLoading) return;
     if (!_isWithinAttendanceZone) {
@@ -378,12 +402,17 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final appTheme = MyApp.of(context);
+
     return Scaffold(
       key: _scaffoldKey,
       drawer: AppDrawer(
         name: _userName,
         email: _extractProfileEmail(_profileData) ?? 'email belum tersedia',
+        photoUrl: _extractProfilePhoto(_profileData),
         currentIndex: _selectedIndex,
+        isDarkMode: appTheme.isDarkMode,
+        onToggleDarkMode: appTheme.toggleThemeMode,
         onSelectTab: (index) {
           if (!mounted) return;
           setState(() {
@@ -402,7 +431,7 @@ class _HomePageState extends State<HomePage> {
           );
         },
       ),
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(child: _buildBody()),
       bottomNavigationBar: BottomNavBar(
         currentIndex: _selectedIndex,
@@ -417,6 +446,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildBody() {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     if (_isLoadingData) {
       return const Center(child: CircularProgressIndicator());
@@ -461,7 +491,7 @@ class _HomePageState extends State<HomePage> {
           Text(
             _greetingForHour(_now.hour),
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF8B93A7),
+              color: palette.textSecondary,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -469,7 +499,7 @@ class _HomePageState extends State<HomePage> {
           Text(
             _userName,
             style: theme.textTheme.headlineSmall?.copyWith(
-              color: const Color(0xFF21242C),
+              color: palette.textPrimary,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -499,7 +529,7 @@ class _HomePageState extends State<HomePage> {
               Text(
                 'Kehadiran Minggu Ini',
                 style: theme.textTheme.titleMedium?.copyWith(
-                  color: const Color(0xFF20232B),
+                  color: palette.textPrimary,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -642,6 +672,7 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Row(
       children: [
@@ -650,7 +681,7 @@ class _TopBar extends StatelessWidget {
         Text(
           'Presensia',
           style: theme.textTheme.titleMedium?.copyWith(
-            color: const Color(0xFF2E7BEF),
+            color: palette.primary,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -689,8 +720,10 @@ class _HeaderIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.appPalette;
+
     return Material(
-      color: Colors.white,
+      color: palette.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -700,15 +733,16 @@ class _HeaderIconButton extends StatelessWidget {
           height: 42,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
+                color: palette.shadow,
                 blurRadius: 14,
                 offset: const Offset(0, 6),
               ),
             ],
           ),
-          child: Icon(icon, color: const Color(0xFF5E667A), size: 20),
+          child: Icon(icon, color: palette.textSecondary, size: 20),
         ),
       ),
     );
@@ -723,6 +757,7 @@ class _CurrentTimeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
     final formattedTime = _formatTime(now);
     final formattedDate = _formatDate(now);
 
@@ -730,11 +765,12 @@ class _CurrentTimeCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: palette.shadow,
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -755,7 +791,7 @@ class _CurrentTimeCard extends StatelessWidget {
           Text(
             formattedTime,
             style: theme.textTheme.displaySmall?.copyWith(
-              color: const Color(0xFF242833),
+              color: palette.textPrimary,
               fontWeight: FontWeight.w800,
               height: 1,
               fontFeatures: const [FontFeature.tabularFigures()],
@@ -768,7 +804,7 @@ class _CurrentTimeCard extends StatelessWidget {
               formattedDate,
               key: ValueKey<String>(formattedDate),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF8A92A6),
+                color: palette.textSecondary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -788,7 +824,7 @@ class _CurrentTimeCard extends StatelessWidget {
               Text(
                 'Belum Absen',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF657089),
+                  color: palette.textSecondary,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -846,16 +882,18 @@ class _LocationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: palette.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: palette.shadow,
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -867,7 +905,7 @@ class _LocationCard extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF2FF),
+              color: palette.surfaceAccent,
               borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(
@@ -884,7 +922,7 @@ class _LocationCard extends StatelessWidget {
                 Text(
                   'Radius Kehadiran',
                   style: theme.textTheme.titleSmall?.copyWith(
-                    color: const Color(0xFF232833),
+                    color: palette.textPrimary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -894,7 +932,7 @@ class _LocationCard extends StatelessWidget {
                       ? 'Anda berada dalam radius absensi PPKD.'
                       : 'Anda di luar radius 400 meter dari PPKD.',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF8A92A6),
+                    color: palette.textSecondary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -903,7 +941,7 @@ class _LocationCard extends StatelessWidget {
                   Text(
                     'Jarak ke PPKD: ${distanceMeters!.round()} meter',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF8A92A6),
+                      color: palette.textSecondary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -952,6 +990,7 @@ class _AttendanceActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Material(
       color: const Color(0xFF2E7BEF),
@@ -967,7 +1006,7 @@ class _AttendanceActionCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: const Color(0x332E7BEF),
+                color: palette.primary.withValues(alpha: palette.isDark ? 0.22 : 0.30),
                 blurRadius: 24,
                 offset: const Offset(0, 12),
               ),
@@ -1031,9 +1070,10 @@ class _LeaveActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Material(
-      color: const Color(0xFFFFFFFF),
+      color: palette.surface,
       borderRadius: BorderRadius.circular(22),
       child: InkWell(
         onTap: isLoading ? null : onTap,
@@ -1042,11 +1082,12 @@ class _LeaveActionCard extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: palette.surface,
             borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
+                color: palette.shadow,
                 blurRadius: 24,
                 offset: const Offset(0, 12),
               ),
@@ -1058,7 +1099,7 @@ class _LeaveActionCard extends StatelessWidget {
                 width: 54,
                 height: 54,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF2FF),
+                  color: palette.surfaceAccent,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: const Icon(
@@ -1075,7 +1116,7 @@ class _LeaveActionCard extends StatelessWidget {
                     Text(
                       'Ajukan Izin',
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: const Color(0xFF232833),
+                        color: palette.textPrimary,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -1085,7 +1126,7 @@ class _LeaveActionCard extends StatelessWidget {
                           ? 'Mengirim permintaan...'
                           : 'Ajukan izin apabila tidak hadir hari ini.',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF8A92A6),
+                        color: palette.textSecondary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1126,6 +1167,7 @@ class _AttendanceWeekRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1137,20 +1179,23 @@ class _AttendanceWeekRow extends StatelessWidget {
                   width: 43,
                   height: 43,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: palette.surface,
                     borderRadius: BorderRadius.circular(14),
                     border: day.isSelected
-                        ? Border.all(color: const Color(0xFFB8D3FF), width: 1.6)
+                        ? Border.all(
+                            color: palette.primary.withValues(alpha: 0.45),
+                            width: 1.6,
+                          )
                         : day.label == 'FRI'
                         ? Border.all(
-                            color: const Color(0xFFD9DFEA),
+                            color: palette.border,
                             width: 1.2,
                             strokeAlign: BorderSide.strokeAlignInside,
                           )
                         : null,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
+                        color: palette.shadow,
                         blurRadius: 14,
                         offset: const Offset(0, 6),
                       ),
@@ -1180,7 +1225,7 @@ class _AttendanceWeekRow extends StatelessWidget {
                 Text(
                   day.label,
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: const Color(0xFF838CA1),
+                    color: palette.textSecondary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1200,6 +1245,7 @@ class _ProductivityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
     const barHeights = [44.0, 50.0, 30.0, 60.0, 24.0, 72.0];
     final effectiveness =
         statsData?['data']?['total_absen'] is int &&
@@ -1213,11 +1259,12 @@ class _ProductivityCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: palette.shadow,
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -1240,8 +1287,8 @@ class _ProductivityCard extends StatelessWidget {
                       height: barHeights[index],
                       decoration: BoxDecoration(
                         color: isActive
-                            ? const Color(0xFF2E7BEF)
-                            : const Color(0xFFE7EEF8),
+                            ? palette.primary
+                            : palette.surfaceMuted,
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
@@ -1266,7 +1313,7 @@ class _ProductivityCard extends StatelessWidget {
                 child: Text(
                   'Efektivitas Kerja',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF738097),
+                    color: palette.textSecondary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -1274,7 +1321,7 @@ class _ProductivityCard extends StatelessWidget {
               Text(
                 '$effectiveness%',
                 style: theme.textTheme.titleSmall?.copyWith(
-                  color: const Color(0xFF232833),
+                  color: palette.textPrimary,
                   fontWeight: FontWeight.w800,
                 ),
               ),

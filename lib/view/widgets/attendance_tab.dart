@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:presensia/theme/app_theme.dart';
 
 class AttendanceTab extends StatefulWidget {
   const AttendanceTab({
+    super.key,
     required this.statsData,
     required this.todayData,
     required this.onRefresh,
@@ -29,7 +31,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
     -6.200000,
     106.816666,
   ); // Default: Jakarta
-  Set<Marker> _markers = {};
+  final Set<Marker> _markers = {};
   bool _isLoadingLocation = true;
   bool _hasLocationPermission = false;
   bool _isWithinZone = true;
@@ -221,6 +223,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return SizedBox.expand(
       child: Stack(
@@ -270,8 +273,9 @@ class _AttendanceTabState extends State<AttendanceTab> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: palette.surface,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: palette.border),
                 ),
                 child: const CircularProgressIndicator(),
               ),
@@ -285,26 +289,33 @@ class _AttendanceTabState extends State<AttendanceTab> {
             child: SingleChildScrollView(
               child: Container(
                 decoration: const BoxDecoration(
-                  color: Colors.white,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color(0x1F000000),
-                      blurRadius: 24,
-                      offset: Offset(0, -4),
-                    ),
-                  ],
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: palette.surface,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    border: Border(top: BorderSide(color: palette.border)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: palette.shadow,
+                        blurRadius: 24,
+                        offset: const Offset(0, -4),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                       // Verified Location Header
                       Text(
                         'VERIFIED LOCATION',
                         style: theme.textTheme.labelSmall?.copyWith(
-                          color: const Color(0xFF6BA0F5),
+                          color: palette.primaryStrong,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 1.2,
                         ),
@@ -324,7 +335,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.titleMedium?.copyWith(
-                                    color: const Color(0xFF21242C),
+                                    color: palette.textPrimary,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
@@ -334,7 +345,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                    color: const Color(0xFF8B93A7),
+                                    color: palette.textSecondary,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -357,7 +368,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
                               Text(
                                 _formatDate(now),
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: const Color(0xFF657089),
+                                  color: palette.textSecondary,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -375,7 +386,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF5F7FB),
+                                color: palette.surfaceMuted,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -384,7 +395,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
                                   Text(
                                     'Masuk jam pelatihan',
                                     style: theme.textTheme.labelSmall?.copyWith(
-                                      color: const Color(0xFF8B93A7),
+                                      color: palette.textSecondary,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
@@ -393,7 +404,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
                                     '8.00 WIB',
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(
-                                          color: const Color(0xFF21242C),
+                                          color: palette.textPrimary,
                                           fontWeight: FontWeight.w800,
                                         ),
                                   ),
@@ -409,8 +420,8 @@ class _AttendanceTabState extends State<AttendanceTab> {
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 color: _isWithinZone
-                                    ? const Color(0xFFE8F8EE)
-                                    : const Color(0xFFFFEFEF),
+                                    ? palette.successSurface
+                                    : palette.dangerSurface,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -464,8 +475,8 @@ class _AttendanceTabState extends State<AttendanceTab> {
                               : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _isWithinZone
-                                ? const Color(0xFF2E7BEF)
-                                : const Color(0xFFB8C2D9),
+                                ? palette.primary
+                                : palette.textMuted,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -489,13 +500,13 @@ class _AttendanceTabState extends State<AttendanceTab> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF5F7FB),
+                          color: palette.surfaceMuted,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           'DATA KEHADIRAN AKAN DISIMPAN DAN DIGUNAKAN UNTUK KEPERLUAN VERIFIKASI GPS & BIOMETRIC',
                           style: theme.textTheme.labelSmall?.copyWith(
-                            color: const Color(0xFF657089),
+                            color: palette.textSecondary,
                             fontWeight: FontWeight.w600,
                             height: 1.4,
                           ),
@@ -506,6 +517,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
                 ),
               ),
             ),
+          ),
           ),
         ],
       ),

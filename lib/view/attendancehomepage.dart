@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:presensia/theme/app_theme.dart';
 import 'package:presensia/view/login_page.dart';
 import 'package:presensia/view/registrasion_page.dart';
 
@@ -8,11 +9,12 @@ class AttendanceHomepage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
+      backgroundColor: palette.backgroundSoft,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F8FC),
+        backgroundColor: palette.backgroundSoft,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
@@ -39,7 +41,7 @@ class AttendanceHomepage extends StatelessWidget {
                     'Selamat Datang di',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineMedium?.copyWith(
-                      color: const Color(0xFF1A1D29),
+                      color: palette.textPrimary,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -56,7 +58,7 @@ class AttendanceHomepage extends StatelessWidget {
                     'Mencatat kehadiran jadi lebih mudah,\nakurat, dan transparan dalam satu\ngenggaman.',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.titleMedium?.copyWith(
-                      color: const Color(0xFF6B7280),
+                      color: palette.textSecondary,
                       height: 1.5,
                       fontWeight: FontWeight.w500,
                     ),
@@ -87,12 +89,9 @@ class AttendanceHomepage extends StatelessWidget {
                     child: OutlinedButton(
                       onPressed: () {},
                       style: OutlinedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFF222531),
-                        side: const BorderSide(
-                          color: Color(0xFFA9C7FF),
-                          width: 1.4,
-                        ),
+                        backgroundColor: palette.surface,
+                        foregroundColor: palette.textPrimary,
+                        side: BorderSide(color: palette.border, width: 1.4),
                         padding: const EdgeInsets.symmetric(vertical: 17),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -106,7 +105,7 @@ class AttendanceHomepage extends StatelessWidget {
                           Text(
                             'Continue with Google',
                             style: theme.textTheme.titleMedium?.copyWith(
-                              color: const Color(0xFF222531),
+                              color: palette.textPrimary,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -125,7 +124,7 @@ class AttendanceHomepage extends StatelessWidget {
                         child: Text(
                           'OR',
                           style: theme.textTheme.labelMedium?.copyWith(
-                            color: const Color(0xFF7B8194),
+                            color: palette.textSecondary,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1.2,
                           ),
@@ -174,7 +173,7 @@ class AttendanceHomepage extends StatelessWidget {
                       Text(
                         'Sudah punya akun? ',
                         style: theme.textTheme.bodyLarge?.copyWith(
-                          color: const Color(0xFF6B7280),
+                          color: palette.textSecondary,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -264,12 +263,14 @@ class _FeatureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0F3FB),
+        color: palette.surfaceMuted,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border),
       ),
       child: Column(
         children: [
@@ -287,7 +288,7 @@ class _FeatureCard extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: theme.textTheme.titleSmall?.copyWith(
-              color: const Color(0xFF1A1D29),
+              color: palette.textPrimary,
               fontWeight: FontWeight.w700,
             ),
           ),

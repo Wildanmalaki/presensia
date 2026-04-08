@@ -1,11 +1,16 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:presensia/services/auth_service.dart';
+import 'package:presensia/theme/app_theme.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({
+    super.key,
     required this.profileData,
     required this.currentUserName,
     required this.onRefresh,
@@ -23,9 +28,31 @@ class _ProfileTabState extends State<ProfileTab> {
   final ImagePicker _imagePicker = ImagePicker();
   bool _isUpdatingProfile = false;
   bool _isUploadingPhoto = false;
+  File? _localProfilePhotoFile;
+  Uint8List? _localProfilePhotoBytes;
+  String? _cachedProfilePhotoUrl;
+  String? _uploadedProfilePhotoUrl;
+  int _photoRefreshSeed = 0;
 
   Map<String, dynamic>? get _profile =>
       widget.profileData?['data'] as Map<String, dynamic>?;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCachedProfilePhoto();
+  }
+
+  Future<void> _loadCachedProfilePhoto() async {
+    final cachedUrl = await AuthService.getProfilePhotoUrl();
+    if (!mounted || cachedUrl == null || cachedUrl.trim().isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _cachedProfilePhotoUrl = cachedUrl.trim();
+    });
+  }
 
   String get _name {
     final profile = _profile;
@@ -51,15 +78,49 @@ class _ProfileTabState extends State<ProfileTab> {
   String? get _photoUrl {
     final profile = _profile;
     if (profile == null) {
-      return null;
+      return _appendPhotoVersion(
+        AuthService.resolveMediaUrl(_cachedProfilePhotoUrl),
+      );
     }
-    final rawUrl = _readProfileString(profile, const [
+    final directUrl = _readProfileString(profile, const [
       'profile_photo',
       'profile_photo_url',
       'photo',
       'avatar',
     ]);
-    return AuthService.resolveMediaUrl(rawUrl);
+    String rawUrl = directUrl;
+    final user = profile['user'];
+    if (rawUrl.isEmpty && user is Map<String, dynamic>) {
+      rawUrl = _readProfileString(user, const [
+        'profile_photo',
+        'profile_photo_url',
+        'photo',
+        'avatar',
+      ]);
+    }
+
+    final resolved = AuthService.resolveMediaUrl(rawUrl);
+    return _appendPhotoVersion(
+      resolved ??
+          AuthService.resolveMediaUrl(_uploadedProfilePhotoUrl) ??
+          AuthService.resolveMediaUrl(_cachedProfilePhotoUrl),
+    );
+  }
+
+  String? _appendPhotoVersion(String? url) {
+    if (url == null || url.trim().isEmpty) {
+      return null;
+    }
+
+    final uri = Uri.parse(url);
+    return uri
+        .replace(
+          queryParameters: {
+            ...uri.queryParameters,
+            'v': _photoRefreshSeed.toString(),
+          },
+        )
+        .toString();
   }
 
   void _showMessage(String message) {
@@ -72,10 +133,8 @@ class _ProfileTabState extends State<ProfileTab> {
     if (_isUpdatingProfile) return;
     final result = await Navigator.of(context).push<String>(
       MaterialPageRoute<String>(
-        builder: (context) => _EditProfilePage(
-          initialName: _name,
-          email: _email,
-        ),
+        builder: (context) =>
+            _EditProfilePage(initialName: _name, email: _email),
       ),
     );
 
@@ -114,29 +173,60 @@ class _ProfileTabState extends State<ProfileTab> {
       return;
     }
 
-    setState(() {
-      _isUploadingPhoto = true;
-    });
-
-    final response = await AuthService.updateProfilePhoto(
-      imageFile: File(pickedFile.path),
+    final editedFile = await Navigator.of(context).push<File>(
+      MaterialPageRoute<File>(
+        builder: (context) =>
+            _ProfilePhotoEditorPage(imageFile: File(pickedFile.path)),
+      ),
     );
 
+    if (!mounted || editedFile == null) {
+      return;
+    }
+
+    final editedBytes = await editedFile.readAsBytes();
     if (!mounted) return;
 
     setState(() {
-      _isUploadingPhoto = false;
+      _localProfilePhotoFile = editedFile;
+      _localProfilePhotoBytes = editedBytes;
+      _isUploadingPhoto = true;
     });
 
-    _showMessage(response.message ?? 'Proses upload foto selesai.');
-    if (response.success) {
-      await widget.onRefresh();
+    try {
+      final response = await AuthService.updateProfilePhoto(
+        imageFile: editedFile,
+      );
+
+      if (!mounted) return;
+
+      _showMessage(response.message ?? 'Proses upload foto selesai.');
+      if (response.success) {
+        final uploadedPhotoUrl = response.user?['profile_photo']
+            ?.toString()
+            .trim();
+        setState(() {
+          if (uploadedPhotoUrl != null && uploadedPhotoUrl.isNotEmpty) {
+            _uploadedProfilePhotoUrl = uploadedPhotoUrl;
+            _cachedProfilePhotoUrl = uploadedPhotoUrl;
+          }
+          _photoRefreshSeed = DateTime.now().millisecondsSinceEpoch;
+        });
+        await widget.onRefresh();
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploadingPhoto = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
     final profile = _profile;
     final name = _name;
     final email = _email;
@@ -145,7 +235,7 @@ class _ProfileTabState extends State<ProfileTab> {
     final roleLabel = _buildRoleLabel(profile, email);
 
     return Container(
-      color: const Color(0xFFF7F9FF),
+      color: palette.backgroundSoft,
       child: RefreshIndicator(
         onRefresh: widget.onRefresh,
         color: const Color(0xFF2E7BEF),
@@ -159,11 +249,11 @@ class _ProfileTabState extends State<ProfileTab> {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: palette.surface,
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
+                        color: palette.shadow,
                         blurRadius: 14,
                         offset: const Offset(0, 6),
                       ),
@@ -171,10 +261,10 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                   child: IconButton(
                     onPressed: () {},
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.arrow_back_ios_new_rounded,
                       size: 18,
-                      color: Color(0xFF6E7691),
+                      color: palette.textSecondary,
                     ),
                   ),
                 ),
@@ -183,7 +273,7 @@ class _ProfileTabState extends State<ProfileTab> {
                   child: Text(
                     'Profil Saya',
                     style: theme.textTheme.titleMedium?.copyWith(
-                      color: const Color(0xFF2E7BEF),
+                      color: palette.primary,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -220,35 +310,18 @@ class _ProfileTabState extends State<ProfileTab> {
                 children: [
                   _ProfileAvatar(
                     name: name,
+                    localPhotoBytes: _localProfilePhotoBytes,
+                    localPhotoFile: _localProfilePhotoFile,
                     photoUrl: _photoUrl,
                     isUploading: _isUploadingPhoto,
-                    onTap: _changePhoto,
+                    onChangePhoto: _changePhoto,
                   ),
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                    onPressed: _isUploadingPhoto ? null : _changePhoto,
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF2E7BEF),
-                    ),
-                    icon: _isUploadingPhoto
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.photo_camera_outlined, size: 18),
-                    label: Text(
-                      _isUploadingPhoto
-                          ? 'Mengunggah foto...'
-                          : 'Ganti foto profil',
-                    ),
-                  ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 20),
                   Text(
                     name,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall?.copyWith(
-                      color: const Color(0xFF20232E),
+                      color: palette.textPrimary,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -257,7 +330,7 @@ class _ProfileTabState extends State<ProfileTab> {
                     roleLabel,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.labelMedium?.copyWith(
-                      color: const Color(0xFF8A90A7),
+                      color: palette.textSecondary,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1,
                     ),
@@ -270,7 +343,7 @@ class _ProfileTabState extends State<ProfileTab> {
               children: [
                 Expanded(
                   child: _InfoCard(
-                    label: 'ID KARYAWAN',
+                    label: 'ID Siswa',
                     value: employeeId,
                     accent: const Color(0xFFEAF1FF),
                     valueColor: const Color(0xFF2D68E6),
@@ -279,7 +352,7 @@ class _ProfileTabState extends State<ProfileTab> {
                 const SizedBox(width: 14),
                 Expanded(
                   child: _InfoCard(
-                    label: 'DEPARTEMEN',
+                    label: 'Jurusan',
                     value: department,
                     accent: const Color(0xFFF1F3FF),
                     valueColor: const Color(0xFF3D72EF),
@@ -291,7 +364,7 @@ class _ProfileTabState extends State<ProfileTab> {
             Text(
               'PENGATURAN AKUN',
               style: theme.textTheme.labelMedium?.copyWith(
-                color: const Color(0xFF8A90A7),
+                color: palette.textSecondary,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.2,
               ),
@@ -334,7 +407,7 @@ class _ProfileTabState extends State<ProfileTab> {
                 'PRESENSIA V2.4.0 - BUILT FOR EXCELLENCE',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: const Color(0xFFC3C8D8),
+                  color: palette.textMuted,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.8,
                 ),
@@ -347,96 +420,350 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 }
 
+class _ProfilePhotoEditorPage extends StatefulWidget {
+  const _ProfilePhotoEditorPage({required this.imageFile});
+
+  final File imageFile;
+
+  @override
+  State<_ProfilePhotoEditorPage> createState() =>
+      _ProfilePhotoEditorPageState();
+}
+
+class _ProfilePhotoEditorPageState extends State<_ProfilePhotoEditorPage> {
+  final TransformationController _transformationController =
+      TransformationController();
+  final GlobalKey _cropKey = GlobalKey();
+
+  double _scale = 1;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _transformationController.value = Matrix4.identity();
+  }
+
+  @override
+  void dispose() {
+    _transformationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveCroppedImage() async {
+    if (_isSaving) return;
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final boundary =
+          _cropKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        throw Exception('Area crop tidak ditemukan.');
+      }
+
+      final image = await boundary.toImage(pixelRatio: 3);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        throw Exception('Gagal memproses gambar.');
+      }
+
+      final bytes = byteData.buffer.asUint8List();
+      final outputFile = File(
+        '${Directory.systemTemp.path}\\profile_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await outputFile.writeAsBytes(bytes);
+
+      if (!mounted) return;
+      Navigator.of(context).pop(outputFile);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Foto belum bisa diproses. Coba atur ulang lalu simpan.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  void _updateScale(double nextScale) {
+    final currentMatrix = _transformationController.value.clone();
+    final currentScale = currentMatrix.getMaxScaleOnAxis();
+    final ratio = nextScale / currentScale;
+    currentMatrix.scaleByDouble(ratio, ratio, 1, 1);
+    _transformationController.value = currentMatrix;
+    setState(() {
+      _scale = nextScale;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.appPalette;
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      backgroundColor: palette.backgroundSoft,
+      appBar: AppBar(
+        backgroundColor: palette.backgroundSoft,
+        elevation: 0,
+        title: Text(
+          'Atur Foto Profil',
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: palette.textPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Geser dan perbesar foto sampai posisinya pas, lalu simpan.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: palette.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: Center(
+                  child: RepaintBoundary(
+                    key: _cropKey,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(28),
+                      child: Container(
+                        width: 280,
+                        height: 280,
+                        color: palette.surface,
+                        child: InteractiveViewer(
+                          transformationController: _transformationController,
+                          minScale: 1,
+                          maxScale: 4,
+                          boundaryMargin: const EdgeInsets.all(120),
+                          child: Image.file(
+                            widget.imageFile,
+                            width: 280,
+                            height: 280,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Ukuran',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: palette.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Slider(
+                value: _scale,
+                min: 1,
+                max: 4,
+                divisions: 12,
+                activeColor: palette.primary,
+                onChanged: _isSaving ? null : _updateScale,
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 54,
+                child: FilledButton(
+                  onPressed: _isSaving ? null : _saveCroppedImage,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: palette.primary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Simpan Foto'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ProfileAvatar extends StatelessWidget {
   const _ProfileAvatar({
     required this.name,
+    required this.localPhotoBytes,
+    required this.localPhotoFile,
     required this.photoUrl,
     required this.isUploading,
-    required this.onTap,
+    required this.onChangePhoto,
   });
 
   final String name;
+  final Uint8List? localPhotoBytes;
+  final File? localPhotoFile;
   final String? photoUrl;
   final bool isUploading;
-  final VoidCallback onTap;
+  final VoidCallback onChangePhoto;
 
   @override
   Widget build(BuildContext context) {
     final initials = _extractInitials(name);
+    final palette = context.appPalette;
 
-    return InkWell(
-      onTap: isUploading ? null : onTap,
-      borderRadius: BorderRadius.circular(28),
-      child: Container(
-        width: 112,
-        height: 112,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFEAF2FF), Color(0xFFF6F9FF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    return SizedBox(
+      width: 144,
+      height: 126,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Align(
+            alignment: Alignment.topCenter,
+            child: Container(
+              width: 112,
+              height: 112,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    palette.surfaceAccent,
+                    palette.isDark
+                        ? const Color(0xFF182B42)
+                        : const Color(0xFFF6F9FF),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: palette.border, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: palette.shadow,
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: SizedBox.expand(
+                        child: localPhotoBytes != null
+                            ? Image.memory(
+                                localPhotoBytes!,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                              )
+                            : localPhotoFile != null
+                            ? Image.file(localPhotoFile!, fit: BoxFit.cover)
+                            : photoUrl != null
+                            ? Image.network(
+                                photoUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) =>
+                                    _AvatarFallback(initials: initials),
+                              )
+                            : _AvatarFallback(initials: initials),
+                      ),
+                    ),
+                  ),
+                  if (isUploading)
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: palette.overlay,
+                          borderRadius: BorderRadius.circular(28),
+                        ),
+                        child: const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFFD3E2FF), width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF2E7BEF).withValues(alpha: 0.12),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Center(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: SizedBox(
-                  width: 88,
-                  height: 88,
-                  child: photoUrl != null
-                      ? Image.network(
-                          photoUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) =>
-                              _AvatarFallback(initials: initials),
-                        )
-                      : _AvatarFallback(initials: initials),
-                ),
-              ),
-            ),
-            if (isUploading)
-              Positioned.fill(
-                child: Container(
+          Positioned(
+            right: 12,
+            bottom: 0,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: isUploading ? null : onChangePhoto,
+                borderRadius: BorderRadius.circular(18),
+                child: Ink(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.22),
-                    borderRadius: BorderRadius.circular(28),
+                    color: palette.surfaceRaised,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: palette.border),
+                    boxShadow: [
+                      BoxShadow(
+                        color: palette.shadow,
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                  child: const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isUploading)
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      else
+                        const Icon(
+                          Icons.photo_camera_outlined,
+                          size: 16,
+                          color: Color(0xFF2E7BEF),
+                        ),
+                      const SizedBox(width: 6),
+                      Text(
+                        isUploading ? 'Upload...' : 'Ganti',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: palette.primary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ],
                   ),
-                ),
-              ),
-            Positioned(
-              right: 8,
-              bottom: 8,
-              child: Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2E7BEF),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 3),
-                ),
-                child: const Icon(
-                  Icons.camera_alt_rounded,
-                  color: Colors.white,
-                  size: 14,
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -449,10 +776,15 @@ class _AvatarFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.appPalette;
+
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1E64F0), Color(0xFF6DB5FF)],
+        gradient: LinearGradient(
+          colors: [
+            palette.primary,
+            palette.isDark ? const Color(0xFF60A5FA) : const Color(0xFF6DB5FF),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -487,12 +819,14 @@ class _InfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: accent,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border.withValues(alpha: 0.65)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -500,7 +834,7 @@ class _InfoCard extends StatelessWidget {
           Text(
             label,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: const Color(0xFF9AA2BA),
+              color: palette.textSecondary,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.9,
             ),
@@ -543,9 +877,10 @@ class _ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Material(
-      color: Colors.white,
+      color: palette.surface,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
@@ -553,11 +888,12 @@ class _ActionTile extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: palette.surface,
             borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.035),
+                color: palette.shadow,
                 blurRadius: 18,
                 offset: const Offset(0, 8),
               ),
@@ -584,7 +920,7 @@ class _ActionTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyLarge?.copyWith(
-                        color: const Color(0xFF303342),
+                        color: palette.textPrimary,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -595,7 +931,7 @@ class _ActionTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF9AA2BA),
+                          color: palette.textSecondary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -624,13 +960,14 @@ class _LogoutTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF5F4),
+        color: palette.dangerSurface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFFFE0DC)),
+        border: Border.all(color: palette.danger.withValues(alpha: 0.22)),
       ),
       child: Row(
         children: [
@@ -652,7 +989,7 @@ class _LogoutTile extends StatelessWidget {
             child: Text(
               'Keluar',
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: const Color(0xFFE0675F),
+                color: palette.danger,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -691,13 +1028,15 @@ class _EditProfilePageState extends State<_EditProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.appPalette;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FF),
+      backgroundColor: palette.backgroundSoft,
       appBar: AppBar(
         title: const Text('Edit Profil'),
-        backgroundColor: const Color(0xFFF7F9FF),
+        backgroundColor: palette.backgroundSoft,
         elevation: 0,
-        foregroundColor: const Color(0xFF21242C),
+        foregroundColor: palette.textPrimary,
       ),
       body: SafeArea(
         child: Padding(
@@ -712,7 +1051,7 @@ class _EditProfilePageState extends State<_EditProfilePage> {
                   decoration: InputDecoration(
                     labelText: 'Nama Lengkap',
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: palette.surface,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: BorderSide.none,
@@ -743,7 +1082,7 @@ class _EditProfilePageState extends State<_EditProfilePage> {
                   decoration: InputDecoration(
                     labelText: 'Email',
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: palette.surface,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: BorderSide.none,
@@ -781,11 +1120,16 @@ class _EditProfilePageState extends State<_EditProfilePage> {
 }
 
 String _buildEmployeeId(Map<String, dynamic>? profile) {
-  final rawId = profile?['id']?.toString().trim();
-  if (rawId != null && rawId.isNotEmpty) {
-    return 'PRS-${rawId.padLeft(3, '0')}';
+  if (profile == null) {
+    return 'ID belum tersedia';
   }
-  return 'PRS-001';
+
+  final rawId = _readFlexibleProfileValue(profile, const ['id']);
+  if (rawId.isNotEmpty) {
+    return rawId;
+  }
+
+  return 'ID belum tersedia';
 }
 
 String _buildDepartment(Map<String, dynamic>? profile) {
@@ -836,6 +1180,56 @@ String _readProfileString(Map<String, dynamic> source, List<String> keys) {
       final value = user[key];
       if (value is String && value.trim().isNotEmpty) {
         return value.trim();
+      }
+    }
+  }
+
+  return '';
+}
+
+String _readFlexibleProfileValue(
+  Map<String, dynamic> source,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final value = source[key];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+    if (value is num) {
+      return value.toString();
+    }
+  }
+
+  final user = source['user'];
+  if (user is Map<String, dynamic>) {
+    for (final key in keys) {
+      final value = user[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+      if (value is num) {
+        return value.toString();
+      }
+    }
+  }
+
+  for (final containerKey in const [
+    'student',
+    'participant',
+    'member',
+    'profile',
+  ]) {
+    final nested = source[containerKey];
+    if (nested is Map<String, dynamic>) {
+      for (final key in keys) {
+        final value = nested[key];
+        if (value is String && value.trim().isNotEmpty) {
+          return value.trim();
+        }
+        if (value is num) {
+          return value.toString();
+        }
       }
     }
   }

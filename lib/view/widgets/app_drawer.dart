@@ -1,26 +1,34 @@
 import 'package:flutter/material.dart';
+import 'package:presensia/theme/app_theme.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({
     required this.name,
     required this.email,
+    this.photoUrl,
     required this.currentIndex,
+    required this.isDarkMode,
+    required this.onToggleDarkMode,
     required this.onSelectTab,
     required this.onLogout,
   });
 
   final String name;
   final String email;
+  final String? photoUrl;
   final int currentIndex;
+  final bool isDarkMode;
+  final Future<void> Function() onToggleDarkMode;
   final ValueChanged<int> onSelectTab;
   final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Drawer(
-      backgroundColor: const Color(0xFFF7F9FF),
+      backgroundColor: palette.backgroundSoft,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.horizontal(right: Radius.circular(30)),
       ),
@@ -86,14 +94,36 @@ class AppDrawer extends StatelessWidget {
                                 color: Colors.white.withValues(alpha: 0.30),
                               ),
                             ),
-                            child: Center(
-                              child: Text(
-                                _initials(name),
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
+                            child: ClipOval(
+                              child:
+                                  photoUrl != null &&
+                                      photoUrl!.trim().isNotEmpty
+                                  ? Image.network(
+                                      photoUrl!,
+                                      width: 64,
+                                      height: 64,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => Center(
+                                        child: Text(
+                                          _initials(name),
+                                          style: theme.textTheme.titleLarge
+                                              ?.copyWith(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                        ),
+                                      ),
+                                    )
+                                  : Center(
+                                      child: Text(
+                                        _initials(name),
+                                        style: theme.textTheme.titleLarge
+                                            ?.copyWith(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                    ),
                             ),
                           ),
                           const Spacer(),
@@ -183,7 +213,7 @@ class AppDrawer extends StatelessWidget {
                   Text(
                     'Menu Utama',
                     style: theme.textTheme.labelMedium?.copyWith(
-                      color: const Color(0xFF8A92A6),
+                      color: palette.textSecondary,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.9,
                     ),
@@ -244,9 +274,68 @@ class AppDrawer extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: palette.surface,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFE8ECF5)),
+                      border: Border.all(color: palette.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: palette.surfaceAccent,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            palette.isDark
+                                ? Icons.dark_mode_rounded
+                                : Icons.light_mode_rounded,
+                            color: palette.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Mode Gelap',
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  color: palette.textPrimary,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                isDarkMode
+                                    ? 'Tampilan gelap sedang aktif'
+                                    : 'Aktifkan tampilan gelap aplikasi',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: palette.textSecondary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch.adaptive(
+                          value: isDarkMode,
+                          activeColor: const Color(0xFF2E7BEF),
+                          onChanged: (_) {
+                            onToggleDarkMode();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: palette.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: palette.border),
                     ),
                     child: Row(
                       children: [
@@ -270,7 +359,7 @@ class AppDrawer extends StatelessWidget {
                               Text(
                                 'Logout',
                                 style: theme.textTheme.bodyLarge?.copyWith(
-                                  color: const Color(0xFF20232B),
+                                  color: palette.textPrimary,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -278,7 +367,7 @@ class AppDrawer extends StatelessWidget {
                               Text(
                                 'Keluar dari akun Presensia',
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: const Color(0xFF9AA2BA),
+                                  color: palette.textSecondary,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -308,7 +397,7 @@ class AppDrawer extends StatelessWidget {
                   Text(
                     'Version 1.0.0',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: const Color(0xFF9AA2BA),
+                      color: palette.textSecondary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -369,9 +458,15 @@ class _DrawerMenuTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
+    final tileBackground = isActive ? palette.activeSurface : palette.surface;
+    final titleColor = isActive ? palette.primaryStrong : palette.textPrimary;
+    final subtitleColor = isActive
+        ? palette.primary.withValues(alpha: 0.86)
+        : palette.textSecondary;
 
     return Material(
-      color: isActive ? const Color(0xFFF1F6FF) : Colors.white,
+      color: tileBackground,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -379,10 +474,10 @@ class _DrawerMenuTile extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: isActive ? const Color(0xFFF1F6FF) : Colors.white,
+            color: tileBackground,
             borderRadius: BorderRadius.circular(20),
             border: isActive
-                ? Border.all(color: const Color(0xFFD7E6FF))
+                ? Border.all(color: palette.primary.withValues(alpha: 0.38))
                 : null,
             boxShadow: [
               BoxShadow(
@@ -411,9 +506,7 @@ class _DrawerMenuTile extends StatelessWidget {
                     Text(
                       title,
                       style: theme.textTheme.bodyLarge?.copyWith(
-                        color: isActive
-                            ? const Color(0xFF1F5FD4)
-                            : const Color(0xFF20232B),
+                        color: titleColor,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -421,9 +514,7 @@ class _DrawerMenuTile extends StatelessWidget {
                     Text(
                       subtitle,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: isActive
-                            ? const Color(0xFF5E84D6)
-                            : const Color(0xFF9AA2BA),
+                        color: subtitleColor,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:presensia/services/auth_service.dart';
+import 'package:presensia/theme/app_theme.dart';
 
 class HistoryTab extends StatefulWidget {
   const HistoryTab({
@@ -36,20 +39,52 @@ class _HistoryTabState extends State<HistoryTab> {
 
     try {
       final now = DateTime.now();
-      final start = _formatApiDate(DateTime(now.year, now.month, 1));
-      final end = _formatApiDate(now);
-      final response = await AuthService.fetchAttendanceHistory(
-        start: start,
-        end: end,
+      final ranges = [
+        (
+          start: _formatApiDate(
+            DateTime(now.year, now.month - 3, now.day),
+          ),
+          end: _formatApiDate(now),
+        ),
+        (
+          start: _formatApiDate(now),
+          end: _formatApiDate(
+            DateTime(now.year, now.month + 6, now.day),
+          ),
+        ),
+      ];
+
+      final responses = await Future.wait(
+        ranges.map(
+          (range) => AuthService.fetchAttendanceHistory(
+            start: range.start,
+            end: range.end,
+          ),
+        ),
       );
-      final rawData = response['data'];
-      final items = rawData is List
-          ? rawData.whereType<Map<String, dynamic>>().toList()
-          : <Map<String, dynamic>>[];
+
+      final items = <Map<String, dynamic>>[];
+      for (final response in responses) {
+        final rawData = response['data'];
+        if (rawData is List) {
+          items.addAll(rawData.whereType<Map<String, dynamic>>());
+        }
+      }
+
+      final cachedLeaveItems = await AuthService.getCachedLeaveHistoryEntries();
+      final mergedItems = _mergeHistoryItems(
+        serverItems: items,
+        cachedLeaveItems: cachedLeaveItems,
+      );
+      mergedItems.sort((a, b) {
+        final first = a['attendance_date']?.toString() ?? '';
+        final second = b['attendance_date']?.toString() ?? '';
+        return second.compareTo(first);
+      });
 
       if (!mounted) return;
       setState(() {
-        _historyItems = items;
+        _historyItems = mergedItems;
         _isLoading = false;
       });
     } catch (error) {
@@ -66,9 +101,49 @@ class _HistoryTabState extends State<HistoryTab> {
     await _loadHistory();
   }
 
+  List<Map<String, dynamic>> _mergeHistoryItems({
+    required List<Map<String, dynamic>> serverItems,
+    required List<Map<String, dynamic>> cachedLeaveItems,
+  }) {
+    final merged = serverItems
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+
+    for (final cachedItem in cachedLeaveItems) {
+      final date = cachedItem['attendance_date']?.toString();
+      final status = cachedItem['status']?.toString();
+      final index = merged.indexWhere(
+        (item) =>
+            item['attendance_date']?.toString() == date &&
+            item['status']?.toString() == status,
+      );
+
+      if (index >= 0) {
+        merged[index] = {
+          ...cachedItem,
+          ...merged[index],
+          'proof_image_path':
+              cachedItem['proof_image_path'] ?? merged[index]['proof_image_path'],
+        };
+      } else {
+        merged.add(Map<String, dynamic>.from(cachedItem));
+      }
+    }
+
+    final unique = <String, Map<String, dynamic>>{};
+    for (final item in merged) {
+      final key =
+          '${item['attendance_date']?.toString() ?? ''}_${item['status']?.toString() ?? ''}';
+      unique[key] = item;
+    }
+
+    return unique.values.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
     final today = widget.todayData?['data'] as Map<String, dynamic>?;
     final stats = widget.statsData?['data'] as Map<String, dynamic>?;
     final status = today?['status']?.toString().trim();
@@ -79,7 +154,7 @@ class _HistoryTabState extends State<HistoryTab> {
     final totalLeave = _readCount(stats?['total_izin']);
 
     return Container(
-      color: const Color(0xFFF7F9FF),
+      color: palette.backgroundSoft,
       child: RefreshIndicator(
         onRefresh: _handleRefresh,
         color: const Color(0xFF2E7BEF),
@@ -90,7 +165,7 @@ class _HistoryTabState extends State<HistoryTab> {
             Text(
               'Riwayat Absensi',
               style: theme.textTheme.headlineSmall?.copyWith(
-                color: const Color(0xFF20232B),
+                color: palette.textPrimary,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -98,7 +173,7 @@ class _HistoryTabState extends State<HistoryTab> {
             Text(
               'Ringkasan kehadiran terbaru Anda.',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF8A92A6),
+                color: palette.textSecondary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -167,8 +242,8 @@ class _HistoryTabState extends State<HistoryTab> {
                   child: _StatCard(
                     label: 'Total Absen',
                     value: '$totalAttend',
-                    accent: const Color(0xFFEAF2FF),
-                    valueColor: const Color(0xFF2E7BEF),
+                    accent: palette.surfaceAccent,
+                    valueColor: palette.primary,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -176,8 +251,8 @@ class _HistoryTabState extends State<HistoryTab> {
                   child: _StatCard(
                     label: 'Hadir',
                     value: '$totalPresent',
-                    accent: const Color(0xFFEAF8F0),
-                    valueColor: const Color(0xFF2FA95E),
+                    accent: palette.successSurface,
+                    valueColor: palette.success,
                   ),
                 ),
               ],
@@ -186,14 +261,14 @@ class _HistoryTabState extends State<HistoryTab> {
             _StatCard(
               label: 'Izin',
               value: '$totalLeave',
-              accent: const Color(0xFFFFF4ED),
-              valueColor: const Color(0xFFE98942),
+              accent: palette.warningSurface,
+              valueColor: palette.warning,
             ),
             const SizedBox(height: 20),
             Text(
               'Daftar Riwayat',
               style: theme.textTheme.titleMedium?.copyWith(
-                color: const Color(0xFF20232B),
+                color: palette.textPrimary,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -211,7 +286,8 @@ class _HistoryTabState extends State<HistoryTab> {
             else if (_historyItems.isEmpty)
               const _HistoryStateCard(
                 title: 'Belum ada riwayat',
-                message: 'Data riwayat absensi belum tersedia pada periode ini.',
+                message:
+                    'Data riwayat absensi, izin, atau cuti belum tersedia pada periode ini.',
               )
             else
               ..._historyItems.map(
@@ -263,15 +339,17 @@ class _HistoryStateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: palette.shadow,
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -283,7 +361,7 @@ class _HistoryStateCard extends StatelessWidget {
           Text(
             title,
             style: theme.textTheme.titleMedium?.copyWith(
-              color: const Color(0xFF20232B),
+              color: palette.textPrimary,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -291,7 +369,7 @@ class _HistoryStateCard extends StatelessWidget {
           Text(
             message,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF8A92A6),
+              color: palette.textSecondary,
               fontWeight: FontWeight.w600,
               height: 1.5,
             ),
@@ -310,23 +388,27 @@ class _HistoryListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
     final status = item['status']?.toString().trim().toLowerCase() ?? '';
     final attendanceDate = item['attendance_date']?.toString().trim() ?? '-';
     final checkIn = item['check_in_time']?.toString().trim();
     final checkOut = item['check_out_time']?.toString().trim();
     final reason = item['alasan_izin']?.toString().trim();
     final address = item['check_in_address']?.toString().trim();
+    final proofImageUrl = _extractProofImageUrl(item);
+    final proofImagePath = item['proof_image_path']?.toString().trim();
     final statusColor = _statusColor(status);
-    final statusBackground = _statusBackground(status);
+    final statusBackground = _statusBackground(status, palette);
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: palette.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
+            color: palette.shadow,
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -341,7 +423,7 @@ class _HistoryListItem extends StatelessWidget {
                 child: Text(
                   _formatReadableDate(attendanceDate),
                   style: theme.textTheme.titleMedium?.copyWith(
-                    color: const Color(0xFF20232B),
+                    color: palette.textPrimary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -389,16 +471,63 @@ class _HistoryListItem extends StatelessWidget {
             Text(
               'Alasan: $reason',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF8A92A6),
+                color: palette.textSecondary,
                 fontWeight: FontWeight.w600,
               ),
             ),
+            if (proofImageUrl != null) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Image.network(
+                    proofImageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Container(
+                      color: palette.surfaceMuted,
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Gambar bukti tidak dapat dimuat',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: palette.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ] else if (proofImagePath != null && proofImagePath.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Image.file(
+                    File(proofImagePath),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Container(
+                      color: palette.surfaceMuted,
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Gambar bukti tidak dapat dimuat',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: palette.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ] else if (address != null && address.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
               address,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF8A92A6),
+                color: palette.textSecondary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -419,14 +548,14 @@ class _HistoryListItem extends StatelessWidget {
     }
   }
 
-  static Color _statusBackground(String status) {
+  static Color _statusBackground(String status, AppPalette palette) {
     switch (status) {
       case 'izin':
-        return const Color(0xFFFFF4ED);
+        return palette.warningSurface;
       case 'masuk':
-        return const Color(0xFFEAF8F0);
+        return palette.successSurface;
       default:
-        return const Color(0xFFF2F4FF);
+        return palette.surfaceAccent;
     }
   }
 
@@ -474,6 +603,32 @@ class _HistoryListItem extends StatelessWidget {
 
     return '$day ${months[month - 1]} $year';
   }
+
+  static String? _extractProofImageUrl(Map<String, dynamic> item) {
+    const candidateKeys = [
+      'proof_image',
+      'proof_image_url',
+      'bukti_image',
+      'bukti_image_url',
+      'bukti',
+      'lampiran',
+      'attachment',
+      'attachment_url',
+      'image',
+      'image_url',
+      'photo',
+      'photo_url',
+    ];
+
+    for (final key in candidateKeys) {
+      final rawValue = item[key]?.toString().trim();
+      if (rawValue != null && rawValue.isNotEmpty && rawValue.toLowerCase() != 'null') {
+        return AuthService.resolveMediaUrl(rawValue);
+      }
+    }
+
+    return null;
+  }
 }
 
 class _HistoryMeta extends StatelessWidget {
@@ -485,11 +640,12 @@ class _HistoryMeta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.appPalette;
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF6F8FE),
+        color: palette.surfaceMuted,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -498,7 +654,7 @@ class _HistoryMeta extends StatelessWidget {
           Text(
             label,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: const Color(0xFF8A92A6),
+              color: palette.textSecondary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -506,7 +662,7 @@ class _HistoryMeta extends StatelessWidget {
           Text(
             value,
             style: theme.textTheme.titleMedium?.copyWith(
-              color: const Color(0xFF20232B),
+              color: palette.textPrimary,
               fontWeight: FontWeight.w800,
             ),
           ),

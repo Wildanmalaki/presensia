@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:presensia/theme/app_theme.dart';
 
 class BottomNavBar extends StatelessWidget {
   const BottomNavBar({required this.currentIndex, required this.onTap});
@@ -15,13 +16,23 @@ class BottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.appPalette;
+
     return SafeArea(
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: palette.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: palette.border)),
+          boxShadow: [
+            BoxShadow(
+              color: palette.shadow,
+              blurRadius: 18,
+              offset: const Offset(0, -4),
+            ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -41,8 +52,8 @@ class BottomNavBar extends StatelessWidget {
                       Icon(
                         item.icon,
                         color: isSelected
-                            ? const Color(0xFF2E7BEF)
-                            : const Color(0xFFA4ADBE),
+                            ? palette.primary
+                            : palette.textMuted,
                         size: 21,
                       ),
                       const SizedBox(height: 6),
@@ -50,8 +61,8 @@ class BottomNavBar extends StatelessWidget {
                         item.label,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: isSelected
-                              ? const Color(0xFF2E7BEF)
-                              : const Color(0xFFA4ADBE),
+                              ? palette.primary
+                              : palette.textMuted,
                           fontWeight: FontWeight.w800,
                         ),
                       ),

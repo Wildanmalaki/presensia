@@ -190,6 +190,8 @@ class AuthService {
 
   static const String _tokenKey = 'auth_token';
   static const String _userNameKey = 'user_name';
+  static const String _profilePhotoKey = 'profile_photo_url';
+  static const String _leaveHistoryCacheKey = 'leave_history_cache';
 
   static Future<bool> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
@@ -211,10 +213,22 @@ class AuthService {
     return prefs.getString(_userNameKey);
   }
 
+  static Future<bool> saveProfilePhotoUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.setString(_profilePhotoKey, url);
+  }
+
+  static Future<String?> getProfilePhotoUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_profilePhotoKey);
+  }
+
   static Future<void> clearToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userNameKey);
+    await prefs.remove(_profilePhotoKey);
+    await prefs.remove(_leaveHistoryCacheKey);
   }
 
   static Future<AuthResponse> login({
@@ -367,7 +381,12 @@ class AuthService {
 
   static Future<Map<String, dynamic>> fetchProfile() async {
     try {
-      return await _getAuthorized('/api/profile');
+      final response = await _getAuthorized('/api/profile');
+      final photoUrl = _extractProfilePhotoUrl(response);
+      if (photoUrl != null && photoUrl.isNotEmpty) {
+        await saveProfilePhotoUrl(photoUrl);
+      }
+      return response;
     } on TimeoutException {
       throw Exception('Memuat profil terlalu lama. Coba lagi.');
     } catch (_) {
@@ -420,29 +439,37 @@ class AuthService {
     required File imageFile,
   }) async {
     try {
-      final uri = Uri.parse('$baseUrl/api/profile/photo');
-      final request = http.MultipartRequest('POST', uri);
-      request.headers.addAll(await _authOnlyHeaders());
-      request.files.add(
-        await http.MultipartFile.fromPath('profile_photo', imageFile.path),
+      final stringResult = await _submitProfilePhotoAsString(
+        imageFile: imageFile,
       );
-
-      final streamedResponse = await request.send().timeout(_requestTimeout);
-      final response = await http.Response.fromStream(streamedResponse);
-      final body = _tryDecode(response.body);
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return AuthResponse(
-          success: true,
-          message: _parseMessage(body) ?? 'Foto profil berhasil diperbarui.',
-          user: body?['data'] as Map<String, dynamic>?,
-        );
+      if (stringResult.success) {
+        return stringResult;
       }
 
-      return AuthResponse(
-        success: false,
-        message: _parseMessage(body) ?? 'Gagal memperbarui foto profil.',
-      );
+      final stringMessage = (stringResult.message ?? '').toLowerCase();
+      final shouldFallbackToFile =
+          stringMessage.contains('must be an image') ||
+          stringMessage.contains('file') ||
+          stringMessage.contains('uploaded') ||
+          stringMessage.contains('invalid');
+      if (!shouldFallbackToFile) {
+        return stringResult;
+      }
+
+      final candidateFields = <String>['photo', 'avatar', 'image'];
+      AuthResponse lastFailure = stringResult;
+      for (final fieldName in candidateFields) {
+        final result = await _submitProfilePhotoAsFile(
+          imageFile: imageFile,
+          fieldName: fieldName,
+        );
+        if (result.success) {
+          return result;
+        }
+        lastFailure = result;
+      }
+
+      return lastFailure;
     } on TimeoutException {
       return const AuthResponse(
         success: false,
@@ -454,6 +481,86 @@ class AuthService {
         message: 'Tidak dapat terhubung ke server saat upload foto profil.',
       );
     }
+  }
+
+  static Future<AuthResponse> _submitProfilePhotoAsString({
+    required File imageFile,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/profile/photo');
+    final bytes = await imageFile.readAsBytes();
+    final extension = imageFile.path.split('.').last.toLowerCase();
+    final mimeType = switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => 'image/jpeg',
+    };
+    final encodedImage = 'data:$mimeType;base64,${base64Encode(bytes)}';
+
+    final response = await http
+        .put(
+          uri,
+          headers: await _headersWithAuth(),
+          body: jsonEncode({'profile_photo': encodedImage}),
+        )
+        .timeout(_requestTimeout);
+    final body = _tryDecode(response.body);
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final photoUrl = _extractProfilePhotoUrl(body);
+      if (photoUrl != null && photoUrl.isNotEmpty) {
+        await saveProfilePhotoUrl(photoUrl);
+      }
+      return AuthResponse(
+        success: true,
+        message: _parseMessage(body) ?? 'Foto profil berhasil diperbarui.',
+        user: body?['data'] as Map<String, dynamic>?,
+      );
+    }
+
+    return AuthResponse(
+      success: false,
+      message:
+          _parseMessage(body) ??
+          _fallbackResponseMessage(
+            response,
+            defaultMessage: 'Gagal memperbarui foto profil.',
+          ),
+    );
+  }
+
+  static Future<AuthResponse> _submitProfilePhotoAsFile({
+    required File imageFile,
+    required String fieldName,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/profile/photo');
+    final request = http.MultipartRequest('POST', uri);
+    request.headers.addAll(await _authOnlyHeaders());
+    request.fields['_method'] = 'PUT';
+    request.files.add(
+      await http.MultipartFile.fromPath(fieldName, imageFile.path),
+    );
+
+    final streamedResponse = await request.send().timeout(_requestTimeout);
+    final response = await http.Response.fromStream(streamedResponse);
+    final body = _tryDecode(response.body);
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return AuthResponse(
+        success: true,
+        message: _parseMessage(body) ?? 'Foto profil berhasil diperbarui.',
+        user: body?['data'] as Map<String, dynamic>?,
+      );
+    }
+
+    return AuthResponse(
+      success: false,
+      message:
+          _parseMessage(body) ??
+          _fallbackResponseMessage(
+            response,
+            defaultMessage: 'Gagal memperbarui foto profil.',
+          ),
+    );
   }
 
   static Future<Map<String, dynamic>> fetchAttendanceStats() async {
@@ -655,9 +762,14 @@ class AuthService {
         cursor = cursor.add(const Duration(days: 1));
       }
 
-      final suffix = submittedCount > 1
-          ? ' untuk $submittedCount hari.'
-          : '.';
+      await _cacheLeaveHistoryEntries(
+        firstDate: firstDate,
+        lastDate: lastDate,
+        leaveReason: leaveReason,
+        proofImage: proofImage,
+      );
+
+      final suffix = submittedCount > 1 ? ' untuk $submittedCount hari.' : '.';
       return AuthResponse(
         success: true,
         message: 'Izin berhasil diajukan$suffix',
@@ -675,6 +787,61 @@ class AuthService {
         message: 'Tidak dapat terhubung ke server saat mengajukan izin.',
       );
     }
+  }
+
+  static Future<void> _cacheLeaveHistoryEntries({
+    required DateTime firstDate,
+    required DateTime lastDate,
+    required String leaveReason,
+    File? proofImage,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final existingRaw = prefs.getString(_leaveHistoryCacheKey);
+    final existingList = _tryDecodeJsonList(existingRaw);
+    final merged = <Map<String, dynamic>>[
+      ...existingList,
+    ];
+
+    var cursor = firstDate;
+    while (!cursor.isAfter(lastDate)) {
+      final date = _formatDate(cursor);
+      merged.removeWhere(
+        (item) =>
+            item['attendance_date']?.toString() == date &&
+            item['status']?.toString() == 'izin',
+      );
+      merged.add({
+        'attendance_date': date,
+        'status': 'izin',
+        'alasan_izin': leaveReason,
+        'proof_image_path': proofImage?.path,
+      });
+      cursor = cursor.add(const Duration(days: 1));
+    }
+
+    await prefs.setString(_leaveHistoryCacheKey, jsonEncode(merged));
+  }
+
+  static Future<List<Map<String, dynamic>>> getCachedLeaveHistoryEntries() async {
+    final prefs = await SharedPreferences.getInstance();
+    return _tryDecodeJsonList(prefs.getString(_leaveHistoryCacheKey));
+  }
+
+  static List<Map<String, dynamic>> _tryDecodeJsonList(String? raw) {
+    if (raw == null || raw.trim().isEmpty) {
+      return <Map<String, dynamic>>[];
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return decoded.whereType<Map<String, dynamic>>().toList();
+      }
+    } catch (_) {
+      // ignore
+    }
+
+    return <Map<String, dynamic>>[];
   }
 
   static AuthResponse _fromResponse(http.Response response) {
@@ -725,6 +892,23 @@ class AuthService {
     return null;
   }
 
+  static String _fallbackResponseMessage(
+    http.Response response, {
+    required String defaultMessage,
+  }) {
+    final raw = response.body.trim();
+    if (raw.isEmpty) {
+      return defaultMessage;
+    }
+
+    final compact = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.isEmpty) {
+      return defaultMessage;
+    }
+
+    return '${response.statusCode}: $compact';
+  }
+
   static Map<String, dynamic>? _tryDecode(String body) {
     try {
       final decoded = jsonDecode(body);
@@ -755,6 +939,32 @@ class AuthService {
     return null;
   }
 
+  static String? _extractProfilePhotoUrl(Map<String, dynamic>? body) {
+    final data = body?['data'];
+    if (data is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final directPhoto = data['profile_photo']?.toString().trim();
+    if (directPhoto != null &&
+        directPhoto.isNotEmpty &&
+        directPhoto.toLowerCase() != 'null') {
+      return directPhoto;
+    }
+
+    final user = data['user'];
+    if (user is Map<String, dynamic>) {
+      final nestedPhoto = user['profile_photo']?.toString().trim();
+      if (nestedPhoto != null &&
+          nestedPhoto.isNotEmpty &&
+          nestedPhoto.toLowerCase() != 'null') {
+        return nestedPhoto;
+      }
+    }
+
+    return null;
+  }
+
   static String? resolveMediaUrl(String? rawUrl) {
     if (rawUrl == null) {
       return null;
@@ -771,7 +981,7 @@ class AuthService {
     }
 
     if (!uri.hasScheme) {
-      final path = normalized.startsWith('/') ? normalized : '/$normalized';
+      final path = _normalizeMediaPath(normalized);
       return '$baseUrl$path';
     }
 
@@ -783,11 +993,29 @@ class AuthService {
             scheme: baseUri.scheme,
             host: baseUri.host,
             port: baseUri.hasPort ? baseUri.port : 443,
+            path: _normalizeMediaPath(uri.path),
           )
           .toString();
     }
 
     return normalized;
+  }
+
+  static String _normalizeMediaPath(String rawPath) {
+    var path = rawPath.trim();
+    if (path.isEmpty) {
+      return '/';
+    }
+
+    if (!path.startsWith('/')) {
+      path = '/$path';
+    }
+
+    if (path.startsWith('/profile_photo/')) {
+      return '/public$path';
+    }
+
+    return path;
   }
 
   static String _formatDate(DateTime value) {
