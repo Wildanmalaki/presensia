@@ -221,7 +221,7 @@ class _FormIzinPageState extends State<FormIzinPage> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: _selectedLeaveType,
+                  initialValue: _selectedLeaveType,
                   items: _leaveTypes
                       .map(
                         (type) => DropdownMenuItem<String>(

@@ -3,152 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:presensia/models/auth_models.dart';
+import 'package:presensia/models/leave_history_entry.dart';
+import 'package:presensia/services/auth_local_storage.dart';
 
-List<Map<String, dynamic>> _extractJsonList(
-  Map<String, dynamic> source,
-  List<String> keys,
-) {
-  for (final key in keys) {
-    final value = source[key];
-    if (value is List) {
-      return value.whereType<Map<String, dynamic>>().toList();
-    }
-    if (value is Map<String, dynamic>) {
-      final nestedList = value['data'];
-      if (nestedList is List) {
-        return nestedList.whereType<Map<String, dynamic>>().toList();
-      }
-    }
-  }
-  return const <Map<String, dynamic>>[];
-}
-
-String _readString(Map<String, dynamic> source, List<String> keys) {
-  for (final key in keys) {
-    final value = source[key];
-    if (value is String && value.trim().isNotEmpty) {
-      return value.trim();
-    }
-    if (value != null) {
-      final text = value.toString().trim();
-      if (text.isNotEmpty && text.toLowerCase() != 'null') {
-        return text;
-      }
-    }
-  }
-  return '';
-}
-
-int _readInt(Map<String, dynamic> source, List<String> keys) {
-  for (final key in keys) {
-    final value = source[key];
-    if (value is int) {
-      return value;
-    }
-    if (value is String) {
-      final parsed = int.tryParse(value);
-      if (parsed != null) {
-        return parsed;
-      }
-    }
-  }
-  return 0;
-}
-
-List<TrainingOption> _deduplicateTrainings(List<TrainingOption> trainings) {
-  final seenKeys = <String>{};
-  final result = <TrainingOption>[];
-
-  for (final training in trainings) {
-    final normalizedTitle = training.title.trim().toLowerCase();
-    final key = training.id > 0
-        ? 'id:${training.id}'
-        : 'title:$normalizedTitle';
-    if (normalizedTitle.isEmpty || seenKeys.contains(key)) {
-      continue;
-    }
-    seenKeys.add(key);
-    result.add(training);
-  }
-
-  return result;
-}
-
-class TrainingOption {
-  const TrainingOption({required this.id, required this.title});
-
-  final int id;
-  final String title;
-
-  factory TrainingOption.fromJson(Map<String, dynamic> json) {
-    final resolvedTitle = _readString(json, const [
-      'title',
-      'name',
-      'training_name',
-      'nama',
-    ]);
-
-    return TrainingOption(
-      id: _readInt(json, const ['id', 'training_id']),
-      title: resolvedTitle.isEmpty ? 'Jurusan tanpa nama' : resolvedTitle,
-    );
-  }
-}
-
-class BatchOption {
-  const BatchOption({
-    required this.id,
-    required this.label,
-    required this.trainings,
-  });
-
-  final int id;
-  final String label;
-  final List<TrainingOption> trainings;
-
-  factory BatchOption.fromJson(Map<String, dynamic> json) {
-    final rawTrainings = _extractJsonList(json, const [
-      'trainings',
-      'training',
-      'jurusans',
-      'majors',
-    ]);
-    final parsedTrainings = rawTrainings.map(TrainingOption.fromJson).toList();
-    final trainings = _deduplicateTrainings(parsedTrainings);
-    final batchLabel = _readString(json, const [
-      'label',
-      'name',
-      'title',
-      'batch_name',
-    ]);
-    final batchNumber = _readString(json, const ['batch_ke', 'batch']);
-
-    return BatchOption(
-      id: _readInt(json, const ['id', 'batch_id']),
-      label: batchLabel.isNotEmpty
-          ? batchLabel
-          : batchNumber.isNotEmpty
-          ? 'Batch $batchNumber'
-          : 'Batch',
-      trainings: trainings,
-    );
-  }
-}
-
-class AuthResponse {
-  const AuthResponse({
-    required this.success,
-    this.message,
-    this.token,
-    this.user,
-  });
-
-  final bool success;
-  final String? message;
-  final String? token;
-  final Map<String, dynamic>? user;
-}
+export 'package:presensia/models/auth_models.dart';
 
 class AuthService {
   static const String baseUrl = 'https://appabsensi.mobileprojp.com';
@@ -188,48 +47,23 @@ class AuthService {
     );
   }
 
-  static const String _tokenKey = 'auth_token';
-  static const String _userNameKey = 'user_name';
-  static const String _profilePhotoKey = 'profile_photo_url';
-  static const String _leaveHistoryCacheKey = 'leave_history_cache';
+  static Future<bool> saveToken(String token) =>
+      AuthLocalStorage.saveToken(token);
 
-  static Future<bool> saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.setString(_tokenKey, token);
-  }
+  static Future<bool> saveUserName(String name) =>
+      AuthLocalStorage.saveUserName(name);
 
-  static Future<bool> saveUserName(String name) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.setString(_userNameKey, name);
-  }
+  static Future<String?> getToken() => AuthLocalStorage.getToken();
 
-  static Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tokenKey);
-  }
+  static Future<String?> getUserName() => AuthLocalStorage.getUserName();
 
-  static Future<String?> getUserName() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_userNameKey);
-  }
+  static Future<bool> saveProfilePhotoUrl(String url) =>
+      AuthLocalStorage.saveProfilePhotoUrl(url);
 
-  static Future<bool> saveProfilePhotoUrl(String url) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.setString(_profilePhotoKey, url);
-  }
+  static Future<String?> getProfilePhotoUrl() =>
+      AuthLocalStorage.getProfilePhotoUrl();
 
-  static Future<String?> getProfilePhotoUrl() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_profilePhotoKey);
-  }
-
-  static Future<void> clearToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
-    await prefs.remove(_userNameKey);
-    await prefs.remove(_profilePhotoKey);
-    await prefs.remove(_leaveHistoryCacheKey);
-  }
+  static Future<void> clearToken() => AuthLocalStorage.clearSession();
 
   static Future<AuthResponse> login({
     required String email,
@@ -246,7 +80,14 @@ class AuthService {
           .timeout(_requestTimeout);
       final auth = _fromResponse(response);
       if (auth.success && auth.token != null) {
+        await clearToken();
         await saveToken(auth.token!);
+      } else if (auth.success) {
+        await clearToken();
+        return const AuthResponse(
+          success: false,
+          message: 'Sesi login tidak valid. Token pengguna tidak ditemukan.',
+        );
       }
       if (auth.success && auth.user != null) {
         final name = (auth.user!['name'] ?? '').toString().trim();
@@ -297,7 +138,15 @@ class AuthService {
           .timeout(_requestTimeout);
       final auth = _fromResponse(response);
       if (auth.success && auth.token != null) {
+        await clearToken();
         await saveToken(auth.token!);
+      } else if (auth.success) {
+        await clearToken();
+        return const AuthResponse(
+          success: false,
+          message:
+              'Registrasi berhasil, tapi sesi akun baru belum diterima. Silakan login ulang.',
+        );
       }
       if (auth.success && auth.user != null) {
         final name = (auth.user!['name'] ?? '').toString().trim();
@@ -370,8 +219,8 @@ class AuthService {
           .whereType<Map<String, dynamic>>()
           .map(TrainingOption.fromJson)
           .toList();
-
-      return _deduplicateTrainings(trainings);
+      return trainings;
+      // return _deduplicateTrainings(trainings);
     } on TimeoutException {
       throw Exception('Memuat jurusan terlalu lama. Coba lagi.');
     } catch (_) {
@@ -731,6 +580,10 @@ class AuthService {
         leaveType: leaveType,
         proofImage: proofImage,
       );
+      final proofImageBase64 = proofImage != null
+          ? base64Encode(await proofImage.readAsBytes())
+          : null;
+      final submittedEntries = <LeaveHistoryEntry>[];
 
       var submittedCount = 0;
       var cursor = firstDate;
@@ -758,16 +611,20 @@ class AuthService {
           );
         }
 
+        submittedEntries.add(
+          _buildLeaveHistoryEntry(
+            data: body?['data'],
+            fallbackDate: _formatDate(cursor),
+            fallbackReason: leaveReason,
+            proofImagePath: proofImage?.path,
+            proofImageBase64: proofImageBase64,
+          ),
+        );
         submittedCount += 1;
         cursor = cursor.add(const Duration(days: 1));
       }
 
-      await _cacheLeaveHistoryEntries(
-        firstDate: firstDate,
-        lastDate: lastDate,
-        leaveReason: leaveReason,
-        proofImage: proofImage,
-      );
+      await _cacheLeaveHistoryEntries(submittedEntries);
 
       final suffix = submittedCount > 1 ? ' untuk $submittedCount hari.' : '.';
       return AuthResponse(
@@ -789,59 +646,159 @@ class AuthService {
     }
   }
 
-  static Future<void> _cacheLeaveHistoryEntries({
-    required DateTime firstDate,
-    required DateTime lastDate,
-    required String leaveReason,
-    File? proofImage,
+  static Future<AuthResponse> updateLeaveRequest({
+    required int id,
+    required String previousAttendanceDate,
+    required String reason,
+    required DateTime attendanceDate,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final existingRaw = prefs.getString(_leaveHistoryCacheKey);
-    final existingList = _tryDecodeJsonList(existingRaw);
-    final merged = <Map<String, dynamic>>[
-      ...existingList,
-    ];
+    try {
+      final uri = Uri.parse('$baseUrl/api/absen/$id');
+      final normalizedDate = _normalizeDate(attendanceDate);
+      final response = await http
+          .put(
+            uri,
+            headers: await _headersWithAuth(),
+            body: jsonEncode({
+              'date': _formatDate(normalizedDate),
+              'attendance_date': _formatDate(normalizedDate),
+              'status': 'izin',
+              'alasan_izin': reason.trim(),
+            }),
+          )
+          .timeout(_requestTimeout);
 
-    var cursor = firstDate;
-    while (!cursor.isAfter(lastDate)) {
-      final date = _formatDate(cursor);
+      final body = _tryDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        await _upsertCachedLeaveHistoryEntry(
+          previousAttendanceDate: previousAttendanceDate,
+          entry: _buildLeaveHistoryEntry(
+            data: body?['data'],
+            fallbackDate: _formatDate(normalizedDate),
+            fallbackReason: reason.trim(),
+          ),
+        );
+        return AuthResponse(
+          success: true,
+          message: _parseMessage(body) ?? 'Izin berhasil diperbarui.',
+          user: body?['data'] as Map<String, dynamic>?,
+        );
+      }
+
+      return AuthResponse(
+        success: false,
+        message: _parseMessage(body) ?? 'Gagal memperbarui izin.',
+      );
+    } on TimeoutException {
+      return const AuthResponse(
+        success: false,
+        message: 'Permintaan edit izin terlalu lama. Coba lagi.',
+      );
+    } catch (_) {
+      return const AuthResponse(
+        success: false,
+        message: 'Tidak dapat terhubung ke server saat edit izin.',
+      );
+    }
+  }
+
+  static Future<AuthResponse> deleteLeaveRequest({
+    required int id,
+    required String attendanceDate,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/absen/$id');
+      final response = await http
+          .delete(uri, headers: await _headersWithAuth())
+          .timeout(_requestTimeout);
+
+      final body = _tryDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        await _removeCachedLeaveHistoryEntry(
+          attendanceDate: attendanceDate,
+          id: id,
+        );
+        return AuthResponse(
+          success: true,
+          message: _parseMessage(body) ?? 'Izin berhasil dihapus.',
+          user: body?['data'] as Map<String, dynamic>?,
+        );
+      }
+
+      return AuthResponse(
+        success: false,
+        message: _parseMessage(body) ?? 'Gagal menghapus izin.',
+      );
+    } on TimeoutException {
+      return const AuthResponse(
+        success: false,
+        message: 'Permintaan hapus izin terlalu lama. Coba lagi.',
+      );
+    } catch (_) {
+      return const AuthResponse(
+        success: false,
+        message: 'Tidak dapat terhubung ke server saat hapus izin.',
+      );
+    }
+  }
+
+  static Future<void> _cacheLeaveHistoryEntries(
+    List<LeaveHistoryEntry> submittedEntries,
+  ) async {
+    final existingList = await AuthLocalStorage.getLeaveHistoryEntries();
+    final merged = existingList.map((entry) => entry.toJson()).toList();
+
+    for (final entry in submittedEntries) {
+      final date = entry.attendanceDate;
       merged.removeWhere(
         (item) =>
+            _readInt(item['id']) == entry.id ||
             item['attendance_date']?.toString() == date &&
-            item['status']?.toString() == 'izin',
+                item['status']?.toString() == 'izin',
       );
-      merged.add({
-        'attendance_date': date,
-        'status': 'izin',
-        'alasan_izin': leaveReason,
-        'proof_image_path': proofImage?.path,
-      });
-      cursor = cursor.add(const Duration(days: 1));
+      merged.add(entry.toJson());
     }
 
-    await prefs.setString(_leaveHistoryCacheKey, jsonEncode(merged));
+    await AuthLocalStorage.saveLeaveHistoryEntries(
+      merged.map(LeaveHistoryEntry.fromJson).toList(),
+    );
   }
 
-  static Future<List<Map<String, dynamic>>> getCachedLeaveHistoryEntries() async {
-    final prefs = await SharedPreferences.getInstance();
-    return _tryDecodeJsonList(prefs.getString(_leaveHistoryCacheKey));
+  static Future<void> _upsertCachedLeaveHistoryEntry({
+    required String previousAttendanceDate,
+    required LeaveHistoryEntry entry,
+  }) async {
+    final existingList = await AuthLocalStorage.getLeaveHistoryEntries();
+    final merged = existingList
+        .where(
+          (item) =>
+              item.id != entry.id &&
+              item.attendanceDate != previousAttendanceDate,
+        )
+        .toList();
+    merged.add(entry);
+    await AuthLocalStorage.saveLeaveHistoryEntries(merged);
   }
 
-  static List<Map<String, dynamic>> _tryDecodeJsonList(String? raw) {
-    if (raw == null || raw.trim().isEmpty) {
-      return <Map<String, dynamic>>[];
-    }
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is List) {
-        return decoded.whereType<Map<String, dynamic>>().toList();
+  static Future<void> _removeCachedLeaveHistoryEntry({
+    required String attendanceDate,
+    int? id,
+  }) async {
+    final existingList = await AuthLocalStorage.getLeaveHistoryEntries();
+    final filtered = existingList.where((entry) {
+      if (id != null && entry.id == id) {
+        return false;
       }
-    } catch (_) {
-      // ignore
-    }
+      return !(entry.attendanceDate == attendanceDate &&
+          entry.status == 'izin');
+    }).toList();
+    await AuthLocalStorage.saveLeaveHistoryEntries(filtered);
+  }
 
-    return <Map<String, dynamic>>[];
+  static Future<List<Map<String, dynamic>>>
+  getCachedLeaveHistoryEntries() async {
+    final entries = await AuthLocalStorage.getLeaveHistoryEntries();
+    return entries.map((entry) => entry.toJson()).toList();
   }
 
   static AuthResponse _fromResponse(http.Response response) {
@@ -1059,5 +1016,37 @@ class AuthService {
     final hour = value.hour.toString().padLeft(2, '0');
     final minute = value.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
+  }
+
+  static LeaveHistoryEntry _buildLeaveHistoryEntry({
+    dynamic data,
+    required String fallbackDate,
+    required String fallbackReason,
+    String? proofImagePath,
+    String? proofImageBase64,
+  }) {
+    final item = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    return LeaveHistoryEntry(
+      id: _readInt(item['id']),
+      attendanceDate:
+          item['attendance_date']?.toString().trim().isNotEmpty == true
+          ? item['attendance_date'].toString().trim()
+          : fallbackDate,
+      status: item['status']?.toString().trim().isNotEmpty == true
+          ? item['status'].toString().trim()
+          : 'izin',
+      reason: item['alasan_izin']?.toString().trim().isNotEmpty == true
+          ? item['alasan_izin'].toString().trim()
+          : fallbackReason,
+      proofImagePath: proofImagePath,
+      proofImageBase64: proofImageBase64,
+    );
+  }
+
+  static int? _readInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    return int.tryParse(value?.toString() ?? '');
   }
 }

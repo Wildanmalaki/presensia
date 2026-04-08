@@ -3,6 +3,7 @@ import 'package:presensia/theme/app_theme.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({
+    super.key,
     required this.name,
     required this.email,
     this.photoUrl,
@@ -321,7 +322,7 @@ class AppDrawer extends StatelessWidget {
                         ),
                         Switch.adaptive(
                           value: isDarkMode,
-                          activeColor: const Color(0xFF2E7BEF),
+                          activeThumbColor: const Color(0xFF2E7BEF),
                           onChanged: (_) {
                             onToggleDarkMode();
                           },

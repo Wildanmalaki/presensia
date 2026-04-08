@@ -23,7 +23,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   static const double _ppkdLatitude = -6.2108808;
   static const double _ppkdLongitude = 106.8129424;
-  static const double _attendanceRadiusMeters = 400;
+  static const double _attendanceRadiusMeters = 4000000000000000000;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _selectedIndex = 0;
@@ -176,15 +176,16 @@ class _HomePageState extends State<HomePage> {
       }
 
       _locationSubscription?.cancel();
-      _locationSubscription = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 10,
-        ),
-      ).listen((position) {
-        if (!mounted) return;
-        _updateAttendanceZone(position.latitude, position.longitude);
-      });
+      _locationSubscription =
+          Geolocator.getPositionStream(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 10,
+            ),
+          ).listen((position) {
+            if (!mounted) return;
+            _updateAttendanceZone(position.latitude, position.longitude);
+          });
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -240,13 +241,6 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _handleCheckIn() async {
     if (_isAttendanceLoading) return;
-    if (!_isWithinAttendanceZone) {
-      _showMessage(
-        context,
-        'Anda di luar radius 400 meter dari PPKD. Absen tidak tersedia.',
-      );
-      return;
-    }
 
     setState(() {
       _isAttendanceLoading = true;
@@ -272,13 +266,6 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _handleCheckOut() async {
     if (_isAttendanceLoading) return;
-    if (!_isWithinAttendanceZone) {
-      _showMessage(
-        context,
-        'Anda di luar radius 400 meter dari PPKD. Absen tidak tersedia.',
-      );
-      return;
-    }
 
     setState(() {
       _isAttendanceLoading = true;
@@ -305,9 +292,9 @@ class _HomePageState extends State<HomePage> {
   Future<void> _handleLeave() async {
     if (_isLeaveLoading) return;
 
-    final submitted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(builder: (_) => const FormIzinPage()),
-    );
+    final submitted = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute<bool>(builder: (_) => const FormIzinPage()));
     if (!mounted || submitted != true) {
       return;
     }
@@ -322,6 +309,7 @@ class _HomePageState extends State<HomePage> {
     });
 
     await _refreshData();
+    if (!mounted) return;
     _showMessage(context, 'Permintaan izin telah dikirim.');
   }
 
@@ -338,15 +326,9 @@ class _HomePageState extends State<HomePage> {
         true);
 
     if (status == null || status.isEmpty) {
-      if (!_isWithinAttendanceZone) {
-        return 'Di Luar Radius PPKD';
-      }
       return 'Absen Masuk';
     }
     if (status == 'masuk' && !hasCheckOut) {
-      if (!_isWithinAttendanceZone) {
-        return 'Di Luar Radius PPKD';
-      }
       return 'Absen Keluar';
     }
     if (status == 'izin') {
@@ -362,15 +344,9 @@ class _HomePageState extends State<HomePage> {
         true);
 
     if (status == null || status.isEmpty) {
-      if (!_isWithinAttendanceZone) {
-        return 'Absen hanya bisa dilakukan dalam radius 400 meter dari PPKD.';
-      }
       return 'Tap untuk melakukan absen masuk.';
     }
     if (status == 'masuk' && !hasCheckOut) {
-      if (!_isWithinAttendanceZone) {
-        return 'Absen hanya bisa dilakukan dalam radius 400 meter dari PPKD.';
-      }
       return 'Tap untuk melakukan absen keluar.';
     }
     if (status == 'izin') {
@@ -386,15 +362,9 @@ class _HomePageState extends State<HomePage> {
         true);
 
     if (status == null || status.isEmpty) {
-      if (!_isWithinAttendanceZone) {
-        return null;
-      }
       return _handleCheckIn;
     }
     if (status == 'masuk' && !hasCheckOut) {
-      if (!_isWithinAttendanceZone) {
-        return null;
-      }
       return _handleCheckOut;
     }
     return null;
@@ -420,10 +390,10 @@ class _HomePageState extends State<HomePage> {
           });
         },
         onLogout: () async {
+          final navigator = Navigator.of(context);
           await AuthService.clearToken();
           if (!mounted) return;
-          Navigator.pushAndRemoveUntil(
-            context,
+          navigator.pushAndRemoveUntil(
             MaterialPageRoute<void>(
               builder: (context) => const AttendanceHomepage(),
             ),
@@ -513,10 +483,7 @@ class _HomePageState extends State<HomePage> {
             isLoading: _isAttendanceLoading,
           ),
           const SizedBox(height: 12),
-          _LeaveActionCard(
-            onTap: _handleLeave,
-            isLoading: _isLeaveLoading,
-          ),
+          _LeaveActionCard(onTap: _handleLeave, isLoading: _isLeaveLoading),
           const SizedBox(height: 18),
           _LocationCard(
             isWithinZone: _isWithinAttendanceZone,
@@ -626,7 +593,7 @@ class _HomePageState extends State<HomePage> {
 
     setState(() {
       _distanceToPpkdMeters = distance;
-      _isWithinAttendanceZone = distance <= _attendanceRadiusMeters;
+      _isWithinAttendanceZone = true;
     });
   }
 
@@ -1006,7 +973,9 @@ class _AttendanceActionCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: palette.primary.withValues(alpha: palette.isDark ? 0.22 : 0.30),
+                color: palette.primary.withValues(
+                  alpha: palette.isDark ? 0.22 : 0.30,
+                ),
                 blurRadius: 24,
                 offset: const Offset(0, 12),
               ),

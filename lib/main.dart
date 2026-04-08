@@ -11,7 +11,7 @@ void main() {
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
-  static _MyAppState of(BuildContext context) {
+  static MyAppController of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<_ThemeScope>();
     assert(scope != null, 'No _ThemeScope found in context');
     return scope!.state;
@@ -21,7 +21,7 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> implements MyAppController {
   static const String _darkModeKey = 'is_dark_mode';
   ThemeMode _themeMode = ThemeMode.light;
 
@@ -40,6 +40,7 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
+  @override
   Future<void> toggleThemeMode() async {
     final nextMode = _themeMode == ThemeMode.dark
         ? ThemeMode.light
@@ -52,6 +53,7 @@ class _MyAppState extends State<MyApp> {
     await prefs.setBool(_darkModeKey, nextMode == ThemeMode.dark);
   }
 
+  @override
   bool get isDarkMode => _themeMode == ThemeMode.dark;
 
   @override
@@ -103,14 +105,18 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
+abstract class MyAppController {
+  bool get isDarkMode;
+  Future<void> toggleThemeMode();
+}
+
 class _ThemeScope extends InheritedWidget {
   const _ThemeScope({required this.state, required super.child});
 
-  final _MyAppState state;
+  final MyAppController state;
 
   @override
   bool updateShouldNotify(_ThemeScope oldWidget) {
-    return oldWidget.state._themeMode != state._themeMode;
+    return oldWidget.state.isDarkMode != state.isDarkMode;
   }
 }
-

@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:presensia/theme/app_theme.dart';
 
 class BottomNavBar extends StatelessWidget {
-  const BottomNavBar({required this.currentIndex, required this.onTap});
+  const BottomNavBar({
+    super.key,
+    required this.currentIndex,
+    required this.onTap,
+  });
 
   final int currentIndex;
   final ValueChanged<int> onTap;

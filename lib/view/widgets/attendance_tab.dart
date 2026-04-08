@@ -185,13 +185,7 @@ class _AttendanceTabState extends State<AttendanceTab> {
   }
 
   void _updateZoneStatus(LatLng target) {
-    final distance = Geolocator.distanceBetween(
-      target.latitude,
-      target.longitude,
-      _ppkdLatitude,
-      _ppkdLongitude,
-    );
-    _isWithinZone = distance <= _attendanceRadiusMeters;
+    _isWithinZone = true;
   }
 
   String _formatTime(DateTime dateTime) {
@@ -311,39 +305,64 @@ class _AttendanceTabState extends State<AttendanceTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                      // Verified Location Header
-                      Text(
-                        'VERIFIED LOCATION',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: palette.primaryStrong,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
+                        // Verified Location Header
+                        Text(
+                          'VERIFIED LOCATION',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: palette.primaryStrong,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.2,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
+                        const SizedBox(height: 12),
 
-                      // Current Time
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        // Current Time
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _currentAddress,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(
+                                          color: palette.textPrimary,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _addressDetails,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: palette.textSecondary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
-                                  _currentAddress,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    color: palette.textPrimary,
-                                    fontWeight: FontWeight.w800,
-                                  ),
+                                  _formatTime(now),
+                                  style: theme.textTheme.headlineSmall
+                                      ?.copyWith(
+                                        color: const Color(0xFF2E7BEF),
+                                        fontWeight: FontWeight.w800,
+                                        height: 1,
+                                      ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  _addressDetails,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                                  _formatDate(now),
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: palette.textSecondary,
                                     fontWeight: FontWeight.w600,
@@ -351,173 +370,142 @@ class _AttendanceTabState extends State<AttendanceTab> {
                                 ),
                               ],
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                _formatTime(now),
-                                style: theme.textTheme.headlineSmall?.copyWith(
-                                  color: const Color(0xFF2E7BEF),
-                                  fontWeight: FontWeight.w800,
-                                  height: 1,
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Status Grid
+                        Row(
+                          children: [
+                            // Shift Starts
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: palette.surfaceMuted,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Masuk jam pelatihan',
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: palette.textSecondary,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '8.00 WIB',
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(
+                                            color: palette.textPrimary,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _formatDate(now),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: palette.textSecondary,
-                                  fontWeight: FontWeight.w600,
+                            ),
+                            const SizedBox(width: 12),
+
+                            // Status
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: _isWithinZone
+                                      ? palette.successSurface
+                                      : palette.dangerSurface,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'STATUS',
+                                      style: theme.textTheme.labelSmall
+                                          ?.copyWith(
+                                            color: _isWithinZone
+                                                ? const Color(0xFF29A35A)
+                                                : const Color(0xFFE8515B),
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Bisa Absen',
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(
+                                            color: const Color(0xFF29A35A),
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
 
-                      // Status Grid
-                      Row(
-                        children: [
-                          // Shift Starts
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: palette.surfaceMuted,
+                        // Confirm Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Validasi radius lokasi dinonaktifkan sementara.',
+                                  ),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: palette.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Masuk jam pelatihan',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: palette.textSecondary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '8.00 WIB',
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                          color: palette.textPrimary,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                  ),
-                                ],
+                            ),
+                            icon: const Icon(Icons.check_circle_outline),
+                            label: Text(
+                              'Absensi Tersedia',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
+                        ),
+                        const SizedBox(height: 12),
 
-                          // Status
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: _isWithinZone
-                                    ? palette.successSurface
-                                    : palette.dangerSurface,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'STATUS',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      color: _isWithinZone
-                                          ? const Color(0xFF29A35A)
-                                          : const Color(0xFFE8515B),
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _isWithinZone
-                                        ? 'Bisa Absen'
-                                        : 'Di Luar Radius',
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                          color: _isWithinZone
-                                              ? const Color(0xFF29A35A)
-                                              : const Color(0xFFE8515B),
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                        // Disclaimer
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: palette.surfaceMuted,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Confirm Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          onPressed: _isWithinZone
-                              ? () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Lokasi berada dalam radius PPKD.',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _isWithinZone
-                                ? palette.primary
-                                : palette.textMuted,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.check_circle_outline),
-                          label: Text(
-                            _isWithinZone
-                                ? 'Dalam Radius PPKD'
-                                : 'Tidak Bisa Absen',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
+                          child: Text(
+                            'DATA KEHADIRAN AKAN DISIMPAN DAN DIGUNAKAN UNTUK KEPERLUAN VERIFIKASI GPS & BIOMETRIC',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: palette.textSecondary,
+                              fontWeight: FontWeight.w600,
+                              height: 1.4,
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Disclaimer
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: palette.surfaceMuted,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          'DATA KEHADIRAN AKAN DISIMPAN DAN DIGUNAKAN UNTUK KEPERLUAN VERIFIKASI GPS & BIOMETRIC',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: palette.textSecondary,
-                            fontWeight: FontWeight.w600,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           ),
         ],
       ),

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -23,6 +24,7 @@ class HistoryTab extends StatefulWidget {
 class _HistoryTabState extends State<HistoryTab> {
   List<Map<String, dynamic>> _historyItems = const <Map<String, dynamic>>[];
   bool _isLoading = true;
+  bool _isMutatingLeave = false;
   String? _errorMessage;
 
   @override
@@ -41,16 +43,12 @@ class _HistoryTabState extends State<HistoryTab> {
       final now = DateTime.now();
       final ranges = [
         (
-          start: _formatApiDate(
-            DateTime(now.year, now.month - 3, now.day),
-          ),
+          start: _formatApiDate(DateTime(now.year, now.month - 3, now.day)),
           end: _formatApiDate(now),
         ),
         (
           start: _formatApiDate(now),
-          end: _formatApiDate(
-            DateTime(now.year, now.month + 6, now.day),
-          ),
+          end: _formatApiDate(DateTime(now.year, now.month + 6, now.day)),
         ),
       ];
 
@@ -114,16 +112,27 @@ class _HistoryTabState extends State<HistoryTab> {
       final status = cachedItem['status']?.toString();
       final index = merged.indexWhere(
         (item) =>
+            _readItemId(item) != null &&
+                _readItemId(item) == _readItemId(cachedItem) ||
             item['attendance_date']?.toString() == date &&
-            item['status']?.toString() == status,
+                item['status']?.toString() == status,
       );
 
       if (index >= 0) {
         merged[index] = {
           ...cachedItem,
           ...merged[index],
+          'alasan_izin':
+              (merged[index]['alasan_izin']?.toString().trim().isNotEmpty ==
+                  true)
+              ? merged[index]['alasan_izin']
+              : cachedItem['alasan_izin'],
           'proof_image_path':
-              cachedItem['proof_image_path'] ?? merged[index]['proof_image_path'],
+              cachedItem['proof_image_path'] ??
+              merged[index]['proof_image_path'],
+          'proof_image_base64':
+              cachedItem['proof_image_base64'] ??
+              merged[index]['proof_image_base64'],
         };
       } else {
         merged.add(Map<String, dynamic>.from(cachedItem));
@@ -132,12 +141,134 @@ class _HistoryTabState extends State<HistoryTab> {
 
     final unique = <String, Map<String, dynamic>>{};
     for (final item in merged) {
-      final key =
-          '${item['attendance_date']?.toString() ?? ''}_${item['status']?.toString() ?? ''}';
+      final id = _readItemId(item);
+      final key = id != null
+          ? 'id_$id'
+          : '${item['attendance_date']?.toString() ?? ''}_${item['status']?.toString() ?? ''}';
       unique[key] = item;
     }
 
     return unique.values.toList();
+  }
+
+  Future<void> _handleEditLeave(Map<String, dynamic> item) async {
+    final leaveId = _readItemId(item);
+    if (leaveId == null) {
+      _showMessage('Data izin ini belum punya id, jadi belum bisa diedit.');
+      return;
+    }
+
+    final result = await showModalBottomSheet<_LeaveEditResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _LeaveEditSheet(item: item),
+    );
+
+    if (!mounted || result == null) {
+      return;
+    }
+
+    setState(() {
+      _isMutatingLeave = true;
+    });
+
+    final response = await AuthService.updateLeaveRequest(
+      id: leaveId,
+      previousAttendanceDate: item['attendance_date']?.toString() ?? '',
+      reason: result.reason,
+      attendanceDate: result.attendanceDate,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isMutatingLeave = false;
+    });
+
+    _showMessage(response.message ?? 'Proses selesai.');
+    if (response.success) {
+      await _loadHistory();
+      await widget.onRefresh();
+    }
+  }
+
+  Future<void> _handleDeleteLeave(Map<String, dynamic> item) async {
+    final leaveId = _readItemId(item);
+    if (leaveId == null) {
+      _showMessage('Data izin ini belum punya id, jadi belum bisa dihapus.');
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return AlertDialog(
+          title: const Text('Hapus Izin'),
+          content: Text(
+            'Yakin ingin menghapus izin pada ${_HistoryListItem.formatReadableDate(item['attendance_date']?.toString() ?? '-')}?',
+            style: theme.textTheme.bodyMedium,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Hapus'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      _isMutatingLeave = true;
+    });
+
+    final response = await AuthService.deleteLeaveRequest(
+      id: leaveId,
+      attendanceDate: item['attendance_date']?.toString() ?? '',
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isMutatingLeave = false;
+    });
+
+    _showMessage(response.message ?? 'Proses selesai.');
+    if (response.success) {
+      await _loadHistory();
+      await widget.onRefresh();
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  static int? _readItemId(Map<String, dynamic> item) {
+    final raw = item['id'];
+    if (raw is int) {
+      return raw;
+    }
+    return int.tryParse(raw?.toString() ?? '');
   }
 
   @override
@@ -278,6 +409,11 @@ class _HistoryTabState extends State<HistoryTab> {
                 padding: EdgeInsets.symmetric(vertical: 32),
                 child: Center(child: CircularProgressIndicator()),
               )
+            else if (_isMutatingLeave)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: LinearProgressIndicator(minHeight: 4),
+              )
             else if (_errorMessage != null)
               _HistoryStateCard(
                 title: 'Riwayat belum bisa dimuat',
@@ -293,7 +429,11 @@ class _HistoryTabState extends State<HistoryTab> {
               ..._historyItems.map(
                 (item) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: _HistoryListItem(item: item),
+                  child: _HistoryListItem(
+                    item: item,
+                    onEditLeave: () => _handleEditLeave(item),
+                    onDeleteLeave: () => _handleDeleteLeave(item),
+                  ),
                 ),
               ),
           ],
@@ -381,9 +521,15 @@ class _HistoryStateCard extends StatelessWidget {
 }
 
 class _HistoryListItem extends StatelessWidget {
-  const _HistoryListItem({required this.item});
+  const _HistoryListItem({
+    required this.item,
+    this.onEditLeave,
+    this.onDeleteLeave,
+  });
 
   final Map<String, dynamic> item;
+  final VoidCallback? onEditLeave;
+  final VoidCallback? onDeleteLeave;
 
   @override
   Widget build(BuildContext context) {
@@ -397,8 +543,15 @@ class _HistoryListItem extends StatelessWidget {
     final address = item['check_in_address']?.toString().trim();
     final proofImageUrl = _extractProofImageUrl(item);
     final proofImagePath = item['proof_image_path']?.toString().trim();
+    final proofImageBase64 = item['proof_image_base64']?.toString().trim();
+    final hasProofImage =
+        proofImageUrl != null ||
+        (proofImagePath?.isNotEmpty == true) ||
+        (proofImageBase64?.isNotEmpty == true);
     final statusColor = _statusColor(status);
     final statusBackground = _statusBackground(status, palette);
+    final canManageLeave =
+        status == 'izin' && onEditLeave != null && onDeleteLeave != null;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -421,7 +574,7 @@ class _HistoryListItem extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  _formatReadableDate(attendanceDate),
+                  formatReadableDate(attendanceDate),
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: palette.textPrimary,
                     fontWeight: FontWeight.w800,
@@ -448,6 +601,27 @@ class _HistoryListItem extends StatelessWidget {
               ),
             ],
           ),
+          if (canManageLeave) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: onEditLeave,
+                  icon: const Icon(Icons.edit_rounded, size: 18),
+                  label: const Text('Edit'),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: onDeleteLeave,
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  label: const Text('Hapus'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFE8515B),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 14),
           Row(
             children: [
@@ -475,8 +649,18 @@ class _HistoryListItem extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            if (proofImageUrl != null) ...[
-              const SizedBox(height: 12),
+          ],
+          if (hasProofImage) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Bukti pendukung',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: palette.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (proofImageUrl != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: AspectRatio(
@@ -497,9 +681,8 @@ class _HistoryListItem extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
-            ] else if (proofImagePath != null && proofImagePath.isNotEmpty) ...[
-              const SizedBox(height: 12),
+              )
+            else if (proofImagePath != null && proofImagePath.isNotEmpty)
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: AspectRatio(
@@ -520,8 +703,29 @@ class _HistoryListItem extends StatelessWidget {
                     ),
                   ),
                 ),
+              )
+            else if (proofImageBase64 != null && proofImageBase64.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: Image.memory(
+                    base64Decode(proofImageBase64),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Container(
+                      color: palette.surfaceMuted,
+                      alignment: Alignment.center,
+                      child: Text(
+                        'Gambar bukti tidak dapat dimuat',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: palette.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ],
           ] else if (address != null && address.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(
@@ -573,7 +777,7 @@ class _HistoryListItem extends StatelessWidget {
     return value;
   }
 
-  static String _formatReadableDate(String value) {
+  static String formatReadableDate(String value) {
     final parts = value.split('-');
     if (parts.length != 3) {
       return value;
@@ -622,12 +826,207 @@ class _HistoryListItem extends StatelessWidget {
 
     for (final key in candidateKeys) {
       final rawValue = item[key]?.toString().trim();
-      if (rawValue != null && rawValue.isNotEmpty && rawValue.toLowerCase() != 'null') {
+      if (rawValue != null &&
+          rawValue.isNotEmpty &&
+          rawValue.toLowerCase() != 'null') {
         return AuthService.resolveMediaUrl(rawValue);
       }
     }
 
     return null;
+  }
+}
+
+class _LeaveEditResult {
+  const _LeaveEditResult({required this.attendanceDate, required this.reason});
+
+  final DateTime attendanceDate;
+  final String reason;
+}
+
+class _LeaveEditSheet extends StatefulWidget {
+  const _LeaveEditSheet({required this.item});
+
+  final Map<String, dynamic> item;
+
+  @override
+  State<_LeaveEditSheet> createState() => _LeaveEditSheetState();
+}
+
+class _LeaveEditSheetState extends State<_LeaveEditSheet> {
+  late final TextEditingController _reasonController;
+  late DateTime _selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _reasonController = TextEditingController(
+      text: widget.item['alasan_izin']?.toString().trim() ?? '',
+    );
+    _selectedDate = _parseAttendanceDate(
+      widget.item['attendance_date']?.toString(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 2),
+    );
+
+    if (!mounted || picked == null) {
+      return;
+    }
+
+    setState(() {
+      _selectedDate = picked;
+    });
+  }
+
+  void _submit() {
+    final reason = _reasonController.text.trim();
+    if (reason.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Alasan izin wajib diisi.')));
+      return;
+    }
+
+    Navigator.of(
+      context,
+    ).pop(_LeaveEditResult(attendanceDate: _selectedDate, reason: reason));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12, 24, 12, bottomInset + 12),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Edit Izin',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Tanggal',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              InkWell(
+                onTap: _pickDate,
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F9FF),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFD9E4FA)),
+                  ),
+                  child: Text(
+                    _HistoryListItem.formatReadableDate(
+                      _formatDate(_selectedDate),
+                    ),
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: const Color(0xFF20232B),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Alasan',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _reasonController,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  hintText: 'Perbarui alasan izin',
+                  filled: true,
+                  fillColor: const Color(0xFFF7F9FF),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(color: Color(0xFFD9E4FA)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF2E7BEF),
+                      width: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF2E7BEF),
+                    minimumSize: const Size.fromHeight(52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
+                  child: const Text('Simpan Perubahan'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static DateTime _parseAttendanceDate(String? value) {
+    final parsed = DateTime.tryParse(value ?? '');
+    if (parsed != null) {
+      return DateTime(parsed.year, parsed.month, parsed.day);
+    }
+
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  static String _formatDate(DateTime value) {
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
 }
 

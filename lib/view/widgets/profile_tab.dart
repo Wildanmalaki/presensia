@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:presensia/services/auth_service.dart';
 import 'package:presensia/theme/app_theme.dart';
+import 'package:presensia/view/widgets/profile/profile_view_utils.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({
@@ -62,7 +63,7 @@ class _ProfileTabState extends State<ProfileTab> {
     if (profile == null) {
       return fallbackName;
     }
-    final value = _readProfileString(profile, const ['name']);
+    final value = readProfileString(profile, const ['name']);
     return value.isEmpty ? fallbackName : value;
   }
 
@@ -71,7 +72,7 @@ class _ProfileTabState extends State<ProfileTab> {
     if (profile == null) {
       return 'email belum tersedia';
     }
-    final value = _readProfileString(profile, const ['email']);
+    final value = readProfileString(profile, const ['email']);
     return value.isEmpty ? 'email belum tersedia' : value;
   }
 
@@ -82,7 +83,7 @@ class _ProfileTabState extends State<ProfileTab> {
         AuthService.resolveMediaUrl(_cachedProfilePhotoUrl),
       );
     }
-    final directUrl = _readProfileString(profile, const [
+    final directUrl = readProfileString(profile, const [
       'profile_photo',
       'profile_photo_url',
       'photo',
@@ -91,7 +92,7 @@ class _ProfileTabState extends State<ProfileTab> {
     String rawUrl = directUrl;
     final user = profile['user'];
     if (rawUrl.isEmpty && user is Map<String, dynamic>) {
-      rawUrl = _readProfileString(user, const [
+      rawUrl = readProfileString(user, const [
         'profile_photo',
         'profile_photo_url',
         'photo',
@@ -230,9 +231,9 @@ class _ProfileTabState extends State<ProfileTab> {
     final profile = _profile;
     final name = _name;
     final email = _email;
-    final employeeId = _buildEmployeeId(profile);
-    final department = _buildDepartment(profile);
-    final roleLabel = _buildRoleLabel(profile, email);
+    final employeeId = buildProfileId(profile);
+    final department = buildProfileDepartment(profile);
+    final roleLabel = buildProfileRoleLabel(profile, email);
 
     return Container(
       color: palette.backgroundSoft,
@@ -631,7 +632,7 @@ class _ProfileAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = _extractInitials(name);
+    final initials = extractInitials(name);
     final palette = context.appPalette;
 
     return SizedBox(
@@ -1117,139 +1118,4 @@ class _EditProfilePageState extends State<_EditProfilePage> {
       ),
     );
   }
-}
-
-String _buildEmployeeId(Map<String, dynamic>? profile) {
-  if (profile == null) {
-    return 'ID belum tersedia';
-  }
-
-  final rawId = _readFlexibleProfileValue(profile, const ['id']);
-  if (rawId.isNotEmpty) {
-    return rawId;
-  }
-
-  return 'ID belum tersedia';
-}
-
-String _buildDepartment(Map<String, dynamic>? profile) {
-  final batch = profile?['batch'];
-  final training = profile?['training'];
-
-  if (training is Map<String, dynamic>) {
-    final trainingTitle = training['title']?.toString().trim();
-    if (trainingTitle != null && trainingTitle.isNotEmpty) {
-      return trainingTitle;
-    }
-  }
-
-  if (batch is Map<String, dynamic>) {
-    final batchLabel = batch['name']?.toString().trim();
-    if (batchLabel != null && batchLabel.isNotEmpty) {
-      return batchLabel;
-    }
-  }
-
-  return 'Teknologi';
-}
-
-String _buildRoleLabel(Map<String, dynamic>? profile, String email) {
-  final role = profile?['role']?.toString().trim();
-  if (role != null && role.isNotEmpty) {
-    return role.toUpperCase();
-  }
-
-  if (email != 'email belum tersedia') {
-    return 'PESERTA AKTIF';
-  }
-
-  return 'ANGGOTA PRESENSIA';
-}
-
-String _readProfileString(Map<String, dynamic> source, List<String> keys) {
-  for (final key in keys) {
-    final value = source[key];
-    if (value is String && value.trim().isNotEmpty) {
-      return value.trim();
-    }
-  }
-
-  final user = source['user'];
-  if (user is Map<String, dynamic>) {
-    for (final key in keys) {
-      final value = user[key];
-      if (value is String && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-    }
-  }
-
-  return '';
-}
-
-String _readFlexibleProfileValue(
-  Map<String, dynamic> source,
-  List<String> keys,
-) {
-  for (final key in keys) {
-    final value = source[key];
-    if (value is String && value.trim().isNotEmpty) {
-      return value.trim();
-    }
-    if (value is num) {
-      return value.toString();
-    }
-  }
-
-  final user = source['user'];
-  if (user is Map<String, dynamic>) {
-    for (final key in keys) {
-      final value = user[key];
-      if (value is String && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-      if (value is num) {
-        return value.toString();
-      }
-    }
-  }
-
-  for (final containerKey in const [
-    'student',
-    'participant',
-    'member',
-    'profile',
-  ]) {
-    final nested = source[containerKey];
-    if (nested is Map<String, dynamic>) {
-      for (final key in keys) {
-        final value = nested[key];
-        if (value is String && value.trim().isNotEmpty) {
-          return value.trim();
-        }
-        if (value is num) {
-          return value.toString();
-        }
-      }
-    }
-  }
-
-  return '';
-}
-
-String _extractInitials(String name) {
-  final parts = name
-      .split(RegExp(r'\s+'))
-      .where((part) => part.trim().isNotEmpty)
-      .toList();
-
-  if (parts.isEmpty) {
-    return 'P';
-  }
-
-  final first = parts.first.characters.first.toUpperCase();
-  final second = parts.length > 1
-      ? parts.last.characters.first.toUpperCase()
-      : '';
-  return '$first$second';
 }
