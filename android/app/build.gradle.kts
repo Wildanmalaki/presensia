@@ -1,3 +1,12 @@
+import java.util.Properties
+
+val keystoreProperties = Properties().apply {
+ val f = rootProject.file("key.properties")
+ if (f.exists()) {
+ load(f.inputStream())
+ }
+}
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -29,6 +38,52 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
+
+    buildTypes {
+release {
+
+if (signingConfigs.names.contains("
+
+release
+")) {
+
+signingConfig = signingConfigs.getByName("
+
+release
+")
+
+}
+}
+}
+
+signingConfigs {
+
+if (keystoreProperties.isNotEmpty()) {
+
+create("
+
+release
+") {
+
+keyAlias = keystoreProperties["keyAlias
+
+"] as String
+
+keyPassword = keystoreProperties["keyPassword"] as String
+storeFile = file(keystoreProperties["
+
+storeFile
+
+"] as String)
+
+storePassword = keystoreProperties["
+
+storePassword"] as String
+
+}
+}
+
+}
 
     buildTypes {
         release {

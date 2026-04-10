@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -41,31 +42,19 @@ class _HistoryTabState extends State<HistoryTab> {
 
     try {
       final now = DateTime.now();
-      final ranges = [
-        (
-          start: _formatApiDate(DateTime(now.year, now.month - 3, now.day)),
-          end: _formatApiDate(now),
-        ),
-        (
-          start: _formatApiDate(now),
-          end: _formatApiDate(DateTime(now.year, now.month + 6, now.day)),
-        ),
-      ];
-
-      final responses = await Future.wait(
-        ranges.map(
-          (range) => AuthService.fetchAttendanceHistory(
-            start: range.start,
-            end: range.end,
-          ),
-        ),
-      );
+      final response = await AuthService.fetchAttendanceHistory(
+        start: _formatApiDate(DateTime(now.year, now.month - 3, now.day)),
+        end: _formatApiDate(now),
+      ).timeout(const Duration(seconds: 20));
 
       final items = <Map<String, dynamic>>[];
-      for (final response in responses) {
-        final rawData = response['data'];
-        if (rawData is List) {
-          items.addAll(rawData.whereType<Map<String, dynamic>>());
+      final rawData = response['data'];
+      if (rawData is List) {
+        items.addAll(rawData.whereType<Map<String, dynamic>>());
+      } else if (rawData is Map<String, dynamic>) {
+        final nestedItems = rawData['data'];
+        if (nestedItems is List) {
+          items.addAll(nestedItems.whereType<Map<String, dynamic>>());
         }
       }
 
@@ -83,14 +72,24 @@ class _HistoryTabState extends State<HistoryTab> {
       if (!mounted) return;
       setState(() {
         _historyItems = mergedItems;
-        _isLoading = false;
+      });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage =
+            'Memuat riwayat terlalu lama. Tarik ke bawah untuk coba lagi.';
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _errorMessage = error.toString().replaceFirst('Exception: ', '');
-        _isLoading = false;
       });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -275,14 +274,26 @@ class _HistoryTabState extends State<HistoryTab> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = context.appPalette;
-    final today = widget.todayData?['data'] as Map<String, dynamic>?;
-    final stats = widget.statsData?['data'] as Map<String, dynamic>?;
+    final today = _extractMap(widget.todayData);
+    final stats = _extractMap(widget.statsData);
     final status = today?['status']?.toString().trim();
     final checkIn = today?['check_in_time']?.toString().trim();
     final checkOut = today?['check_out_time']?.toString().trim();
-    final totalAttend = _readCount(stats?['total_absen']);
-    final totalPresent = _readCount(stats?['total_masuk']);
-    final totalLeave = _readCount(stats?['total_izin']);
+    final totalAttend = _readCountByKeys(stats, const [
+      'total_absen',
+      'total_attendance',
+      'attendance_count',
+    ]);
+    final totalPresent = _readCountByKeys(stats, const [
+      'total_masuk',
+      'total_hadir',
+      'present_count',
+    ]);
+    final totalLeave = _readCountByKeys(stats, const [
+      'total_izin',
+      'izin_count',
+      'leave_count',
+    ]);
 
     return Container(
       color: palette.backgroundSoft,
@@ -452,6 +463,35 @@ class _HistoryTabState extends State<HistoryTab> {
   int _readCount(dynamic value) {
     if (value is int) return value;
     return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  Map<String, dynamic>? _extractMap(Map<String, dynamic>? source) {
+    if (source == null) {
+      return null;
+    }
+
+    final data = source['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return source;
+  }
+
+  int _readCountByKeys(Map<String, dynamic>? source, List<String> keys) {
+    if (source == null) {
+      return 0;
+    }
+
+    for (final key in keys) {
+      final value = source[key];
+      final parsed = _readCount(value);
+      if (parsed != 0 || value?.toString() == '0') {
+        return parsed;
+      }
+    }
+
+    return 0;
   }
 
   String _formatStatus(String? value) {

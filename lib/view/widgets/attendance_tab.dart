@@ -34,7 +34,8 @@ class _AttendanceTabState extends State<AttendanceTab> {
   final Set<Marker> _markers = {};
   bool _isLoadingLocation = true;
   bool _hasLocationPermission = false;
-  bool _isWithinZone = true;
+  bool _isWithinZone = false;
+  double? _distanceToTargetMeters;
   String _currentAddress =
       'Pusat Pelatihan Kerja Daerah Jakarta Pusat (Bendungan Hilir)';
   String _addressDetails = 'Jalan: 15 Menit dari kantor pusat';
@@ -168,6 +169,13 @@ class _AttendanceTabState extends State<AttendanceTab> {
   void _addMarker() {
     _markers.clear();
     _markers.add(
+      const Marker(
+        markerId: MarkerId('attendance_target'),
+        position: LatLng(_ppkdLatitude, _ppkdLongitude),
+        infoWindow: InfoWindow(title: 'Titik lokasi absensi'),
+      ),
+    );
+    _markers.add(
       Marker(
         markerId: const MarkerId('current_location'),
         position: _currentLocation,
@@ -185,7 +193,14 @@ class _AttendanceTabState extends State<AttendanceTab> {
   }
 
   void _updateZoneStatus(LatLng target) {
-    _isWithinZone = true;
+    final distance = Geolocator.distanceBetween(
+      target.latitude,
+      target.longitude,
+      _ppkdLatitude,
+      _ppkdLongitude,
+    );
+    _distanceToTargetMeters = distance;
+    _isWithinZone = distance <= _attendanceRadiusMeters;
   }
 
   String _formatTime(DateTime dateTime) {
@@ -436,13 +451,28 @@ class _AttendanceTabState extends State<AttendanceTab> {
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
-                                      'Bisa Absen',
+                                      _isWithinZone
+                                          ? 'Bisa Absen'
+                                          : 'Di Luar Area',
                                       style: theme.textTheme.titleMedium
                                           ?.copyWith(
-                                            color: const Color(0xFF29A35A),
+                                            color: _isWithinZone
+                                                ? const Color(0xFF29A35A)
+                                                : const Color(0xFFE8515B),
                                             fontWeight: FontWeight.w800,
                                           ),
                                     ),
+                                    if (_distanceToTargetMeters != null) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${_distanceToTargetMeters!.round()} meter dari titik absen',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: palette.textSecondary,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -456,15 +486,15 @@ class _AttendanceTabState extends State<AttendanceTab> {
                           width: double.infinity,
                           height: 50,
                           child: ElevatedButton.icon(
-                            onPressed: () {
+                            onPressed: _isWithinZone ? () {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
+                                SnackBar(
                                   content: Text(
-                                    'Validasi radius lokasi dinonaktifkan sementara.',
+                                    'Lokasi valid. Anda berada dalam radius 400 meter.',
                                   ),
                                 ),
                               );
-                            },
+                            } : null,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: palette.primary,
                               foregroundColor: Colors.white,
@@ -474,7 +504,9 @@ class _AttendanceTabState extends State<AttendanceTab> {
                             ),
                             icon: const Icon(Icons.check_circle_outline),
                             label: Text(
-                              'Absensi Tersedia',
+                              _isWithinZone
+                                  ? 'Absensi Tersedia'
+                                  : 'Absensi Tidak Tersedia',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,

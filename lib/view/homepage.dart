@@ -23,7 +23,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   static const double _ppkdLatitude = -6.2108808;
   static const double _ppkdLongitude = 106.8129424;
-  static const double _attendanceRadiusMeters = 4000000000000000000;
+  static const double _attendanceRadiusMeters = 400;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _selectedIndex = 0;
@@ -241,6 +241,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _handleCheckIn() async {
     if (_isAttendanceLoading) return;
+    if (!_canSubmitAttendance) {
+      _showMessage(context, _attendanceBlockedMessage);
+      return;
+    }
 
     setState(() {
       _isAttendanceLoading = true;
@@ -266,6 +270,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _handleCheckOut() async {
     if (_isAttendanceLoading) return;
+    if (!_canSubmitAttendance) {
+      _showMessage(context, _attendanceBlockedMessage);
+      return;
+    }
 
     setState(() {
       _isAttendanceLoading = true;
@@ -343,6 +351,12 @@ class _HomePageState extends State<HomePage> {
         (_todayData?['data']?['check_out_time']?.toString().trim().isNotEmpty ==
         true);
 
+    if (!_canSubmitAttendance && (status == null || status.isEmpty)) {
+      return 'Absen hanya tersedia dalam radius 400 meter dari lokasi yang ditentukan.';
+    }
+    if (!_canSubmitAttendance && status == 'masuk' && !hasCheckOut) {
+      return 'Absen keluar hanya tersedia dalam radius 400 meter dari lokasi yang ditentukan.';
+    }
     if (status == null || status.isEmpty) {
       return 'Tap untuk melakukan absen masuk.';
     }
@@ -362,12 +376,31 @@ class _HomePageState extends State<HomePage> {
         true);
 
     if (status == null || status.isEmpty) {
+      if (!_canSubmitAttendance) {
+        return null;
+      }
       return _handleCheckIn;
     }
     if (status == 'masuk' && !hasCheckOut) {
+      if (!_canSubmitAttendance) {
+        return null;
+      }
       return _handleCheckOut;
     }
     return null;
+  }
+
+  bool get _canSubmitAttendance {
+    final distance = _distanceToPpkdMeters;
+    return distance != null && distance <= _attendanceRadiusMeters;
+  }
+
+  String get _attendanceBlockedMessage {
+    final distance = _distanceToPpkdMeters;
+    if (distance == null) {
+      return 'Lokasi belum tersedia. Aktifkan GPS dan izinkan akses lokasi untuk absen.';
+    }
+    return 'Anda berada di luar radius 400 meter. Jarak saat ini ${distance.round()} meter dari lokasi absensi.';
   }
 
   @override
@@ -593,7 +626,7 @@ class _HomePageState extends State<HomePage> {
 
     setState(() {
       _distanceToPpkdMeters = distance;
-      _isWithinAttendanceZone = true;
+      _isWithinAttendanceZone = distance <= _attendanceRadiusMeters;
     });
   }
 
