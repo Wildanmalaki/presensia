@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     
     <application
-        android:label="presensia"
+        android:label="Presensia"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <meta-data
@@ -12,7 +12,7 @@
             android:value="AIzaSyDk_IqTjxDnhlwFcVf8bYfNR0qBtEGAyJw"/>
             
         <activity
-            android:name=".MainActivity"
+            android:name="com.wildan.presensia.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""

@@ -340,7 +340,7 @@ class _HomePageState extends State<HomePage> {
       return 'Absen Keluar';
     }
     if (status == 'izin') {
-      return 'Sudah Izin';
+      return 'Absensi Hari Ini';
     }
     return 'Absen Hari Ini';
   }
@@ -364,7 +364,7 @@ class _HomePageState extends State<HomePage> {
       return 'Tap untuk melakukan absen keluar.';
     }
     if (status == 'izin') {
-      return 'Anda telah mengajukan izin hari ini.';
+      return 'Absensi tidak tersedia karena Anda telah mengajukan izin hari ini.';
     }
     return 'Absen sudah selesai hari ini.';
   }
